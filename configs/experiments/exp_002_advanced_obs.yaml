@@ -1,0 +1,16 @@
+# Switch to AdvancedObs (relative positions/velocities). Requires a fresh policy
+# because the obs vector shape changes.
+extends: ../default.yaml
+
+experiment_name: exp_002_advanced_obs
+
+obs:
+  name: advanced
+
+learner:
+  arch: medium
+  timestep_limit: 50_000_000
+  save_every_ts: 2_000_000
+
+logging:
+  wandb_group: exp_002_advanced_obs

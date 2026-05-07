@@ -1,0 +1,13 @@
+# Baseline — exact tutorial settings, lookup action, small net.
+# Goal: confirm training loop runs and produces a non-random bot in ~10M timesteps.
+extends: ../default.yaml
+
+experiment_name: exp_001_baseline
+
+learner:
+  arch: small
+  timestep_limit: 10_000_000
+  save_every_ts: 500_000
+
+logging:
+  wandb_group: exp_001_baseline

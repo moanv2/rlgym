@@ -1,0 +1,19 @@
+# Stage 2: shift weight toward goal-scoring once the bot reliably hits the ball.
+zero_sum: true
+team_spirit: 0.0
+opp_scale: 1.0
+components:
+  - name: velocity_player_to_ball
+    weight: 0.03
+  - name: velocity_ball_to_goal
+    weight: 0.6
+  - name: touch_ball
+    weight: 0.05
+  - name: event
+    weight: 12.0
+    kwargs:
+      goal: 1.0
+      concede: -1.0
+      shot: 0.15
+      save: 0.3
+      demo: 0.1

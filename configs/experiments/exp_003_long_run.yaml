@@ -1,0 +1,24 @@
+# Long self-play run — the "real" training that produces the presentation bot.
+# Plan to leave this running for the bulk of weeks 3-4.
+extends: ./exp_002_advanced_obs.yaml
+
+experiment_name: exp_003_long_run
+
+state_setter:
+  name: weighted_sample
+  components:
+    - name: random
+      weight: 0.7
+      ball_rand_speed: true
+      cars_rand_speed: true
+      cars_on_ground: false
+    - name: default
+      weight: 0.3
+
+learner:
+  arch: medium
+  timestep_limit: 1_000_000_000
+  save_every_ts: 5_000_000
+
+logging:
+  wandb_group: exp_003_long_run
