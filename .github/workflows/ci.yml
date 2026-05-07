@@ -1,0 +1,83 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+          cache: pip
+          cache-dependency-path: |
+            pyproject.toml
+            requirements-dev.txt
+      - name: Install dev tooling only
+        run: |
+          python -m pip install --upgrade pip
+          # We deliberately skip rlgym_sim/rocketsim — they're heavy and not needed for lint.
+          python -m pip install ruff==0.5.6 mypy==1.11.1
+      - name: Ruff lint
+        run: ruff check src tests scripts
+      - name: Ruff format check
+        run: ruff format --check src tests scripts
+
+  test:
+    name: Test (fast — no rocketsim)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+          cache: pip
+          cache-dependency-path: |
+            pyproject.toml
+            requirements-dev.txt
+      - name: Install lightweight deps
+        run: |
+          python -m pip install --upgrade pip
+          # Install only what the fast test suite needs. rlgym_sim + torch wheels are huge
+          # and the rocketsim-marked tests are excluded anyway.
+          python -m pip install \
+            "numpy<2.0" \
+            "pyyaml>=6.0" \
+            "rich>=13.7" \
+            "tqdm>=4.66" \
+            "pytest>=8.0" \
+            "pytest-cov>=4.1"
+          # Editable install of just our package
+          python -m pip install -e . --no-deps
+      - name: Run tests
+        run: pytest -m "not slow and not rocketsim and not gpu" --cov=rlbot --cov-report=term-missing
+
+  type:
+    name: Type check
+    runs-on: ubuntu-latest
+    continue-on-error: true   # gradual typing — don't gate merges yet
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install mypy==1.11.1 "numpy<2.0" "pyyaml>=6.0"
+          python -m pip install -e . --no-deps
+      - name: mypy
+        run: mypy src
