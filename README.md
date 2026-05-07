@@ -1,4 +1,6 @@
-# rlgym-finalproject
+# rlgym
+
+> Final Project for Reinforcement Learning @ IE School of Science and Technology
 
 A modular, MLOps-disciplined Rocket League bot trained with **RLGym-PPO + rlgym_sim**, built for a 1v1 final-class showdown.
 
