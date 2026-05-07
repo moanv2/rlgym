@@ -13,11 +13,11 @@ build/
 dist/
 .tox/
 
-# Virtual envs
-.venv/
-venv/
-env/
-ENV/
+# Virtual envs (anchored to repo root so we don't catch src/rlbot/env/)
+/.venv/
+/venv/
+/env/
+/ENV/
 
 # IDE
 .vscode/
