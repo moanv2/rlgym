@@ -1,0 +1,23 @@
+# Pinned runtime deps. Use this for reproducible installs:
+#   pip install -r requirements.txt
+#
+# For editable dev installs, prefer:  pip install -e ".[dev]"
+#
+# NOTE: PyTorch must be installed first via the official selector
+#   (https://pytorch.org/get-started/locally/) so the right CUDA wheel is picked.
+#   Example for CUDA 11.8:
+#     pip install torch --index-url https://download.pytorch.org/whl/cu118
+
+numpy==1.26.4
+pyyaml==6.0.2
+wandb==0.17.5
+tqdm==4.66.4
+rich==13.7.1
+
+# RL stack — installed from git because they're not on PyPI
+rocketsim==2.2.4
+rlgym-sim @ git+https://github.com/AechPro/rocket-league-gym-sim@main
+rlgym-ppo @ git+https://github.com/AechPro/rlgym-ppo@main
+
+# Optional: rlgym-tools for LookupAction and other extras
+rlgym-tools @ git+https://github.com/RLGym/rlgym-tools@main

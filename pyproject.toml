@@ -1,0 +1,70 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "rlbot"
+version = "0.1.0"
+description = "Modular Rocket League PPO bot — class final project"
+readme = "README.md"
+requires-python = ">=3.10,<3.12"
+license = { text = "MIT" }
+authors = [{ name = "Diego Alfaro Gomez" }]
+dependencies = [
+    "numpy>=1.24,<2.0",
+    "torch>=2.1",
+    "pyyaml>=6.0",
+    "wandb>=0.16",
+    "tqdm>=4.66",
+    "rich>=13.7",
+    # rlgym_sim, rlgym-ppo, rocketsim are installed from git — see requirements.txt
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-cov>=4.1",
+    "ruff>=0.4",
+    "mypy>=1.8",
+    "pre-commit>=3.6",
+]
+
+[project.scripts]
+rlbot-train = "rlbot.training.train:main"
+rlbot-eval  = "rlbot.evaluation.evaluate:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.ruff]
+line-length = 110
+target-version = "py310"
+src = ["src", "tests", "scripts"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "N", "SIM", "RUF"]
+ignore = [
+    "E501",   # line length handled by formatter
+    "N806",   # ML code uses uppercase locals (X, Y, etc.)
+    "N803",   # same for arg names
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["B011"]
+
+[tool.mypy]
+python_version = "3.10"
+ignore_missing_imports = true     # rlgym_sim has no stubs
+disallow_untyped_defs = false     # gradual typing — tighten later
+warn_unused_ignores = true
+warn_redundant_casts = true
+files = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-v --strict-markers --tb=short"
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "gpu: requires CUDA",
+    "rocketsim: requires rocketsim collision meshes",
+]
