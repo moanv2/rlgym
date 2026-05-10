@@ -15,7 +15,7 @@ tqdm==4.66.4
 rich==13.7.1
 
 # RL stack — installed from git because they're not on PyPI
-rocketsim==2.2.4
+rocketsim==2.2.1   # last release supporting Python 3.10; bump if you upgrade to 3.11+
 rlgym-sim @ git+https://github.com/AechPro/rocket-league-gym-sim@main
 rlgym-ppo @ git+https://github.com/AechPro/rlgym-ppo@main
 
