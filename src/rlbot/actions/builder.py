@@ -8,12 +8,10 @@ def build_action_parser(config: dict[str, Any]):
     name = config.get("name", "lookup")
 
     if name == "lookup":
-        try:
-            from rlgym_tools.extra_action_parsers.lookup_act import LookupAction
-        except ImportError as e:
-            raise ImportError(
-                "action.name='lookup' requires rlgym-tools. pip install -r requirements.txt"
-            ) from e
+        # Vendored — see src/rlbot/actions/lookup_action.py for why we don't import
+        # from rlgym-tools (v2 moved the module path).
+        from rlbot.actions.lookup_action import LookupAction
+
         return LookupAction()
 
     if name == "discrete":
