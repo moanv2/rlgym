@@ -44,6 +44,10 @@ wandb/
 collision_meshes/
 rlbot.cfg.local
 *.log
+rlviser*
+*.dll
+# rlviser writes its own UI config to settings.txt on first launch
+settings.txt
 
 # Secrets
 .env
