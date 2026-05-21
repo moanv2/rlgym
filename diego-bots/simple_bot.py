@@ -24,6 +24,8 @@ Output:
 # Imports
 # --------------------------------------------------------------------------
 
+from pathlib import Path
+
 # rlgym_sim is the Python wrapper around the C++ RocketSim physics engine.
 # It gives us the make() factory that builds a fresh environment, which is
 # basically a black box that simulates one match of Rocket League and lets
@@ -152,6 +154,44 @@ def build_env():
 # Training entrypoint
 # --------------------------------------------------------------------------
 
+# --------------------------------------------------------------------------
+# Auto resume from the latest saved checkpoint.
+#
+# PPO does not store gameplay episodes anywhere. What it stores is the policy
+# weights, the critic weights, the Adam optimizer state, and the cumulative
+# timestep counter. To "keep getting better" we point the Learner at the
+# latest checkpoint folder; it reloads all of that state and continues from
+# the same cumulative timestep, generating fresh on-policy data with the
+# already-trained network.
+#
+# Folder layout produced by rlgym_ppo:
+#   diego-bots/checkpoints/
+#     simple_bot-<unix_ts>/        one folder per training session
+#       100000/                     one folder per save_every_ts hit
+#         PPO_POLICY.pt + others
+#       200008/
+#       ...
+#
+# We pick the most recent session, then the highest numbered timestep inside.
+# Returns None if no checkpoint exists yet, in which case training starts fresh.
+# --------------------------------------------------------------------------
+def find_latest_checkpoint(base: str = "diego-bots/checkpoints") -> str | None:
+    base_path = Path(base)
+    if not base_path.exists():
+        return None
+    runs = sorted(
+        [p for p in base_path.glob("simple_bot*") if p.is_dir()],
+        key=lambda p: p.stat().st_mtime,
+        reverse=True,
+    )
+    for run in runs:
+        timesteps = [p for p in run.iterdir() if p.is_dir() and p.name.isdigit()]
+        if timesteps:
+            latest = max(timesteps, key=lambda p: int(p.name))
+            return str(latest)
+    return None
+
+
 if __name__ == "__main__":
     # The Learner runs Proximal Policy Optimization (PPO), the algorithm
     # used by basically every modern RL bot in this domain. The general
@@ -166,7 +206,18 @@ if __name__ == "__main__":
     #   4. Update the value network to better predict future rewards.
     #   5. Repeat.
     #
+    # PPO is on-policy: there is no replay buffer. Each batch of gameplay
+    # is collected by the current policy, used for one round of updates,
+    # then discarded. "Improvement" comes from collecting fresh data with
+    # ever smarter policies, not from re-watching old episodes.
+    #
     # Knobs explained:
+
+    resume_from = find_latest_checkpoint()
+    if resume_from:
+        print(f"[resume] loading checkpoint: {resume_from}")
+    else:
+        print("[fresh] no checkpoint found, training from scratch")
 
     learner = Learner(
         build_env,
@@ -237,20 +288,32 @@ if __name__ == "__main__":
         policy_layer_sizes=(256, 256, 256),
         critic_layer_sizes=(256, 256, 256),
 
-        # Total environment steps to train for. 500_000 is short on
-        # purpose for this educational run, finishes in about 10 to 20
-        # minutes on a 4070 Laptop. For a real bot, this should be in the
-        # tens of millions at minimum.
-        timestep_limit=500_000,
+        # Total CUMULATIVE environment steps allowed before the Learner exits.
+        # This is the sum across all training sessions, not just this one.
+        # Set very high so resumed runs keep going until you Ctrl+C. The
+        # Learner saves the running counter in BOOK_KEEPING_VARS.json so
+        # resuming preserves it (your already trained 500k is still counted).
+        # For a real strong bot you want tens of millions; 1 billion is just
+        # "effectively unlimited until I stop it manually."
+        timestep_limit=1_000_000_000,
 
-        # Save a checkpoint every this many timesteps. With 500k total
-        # and save_every_ts=100k, you get 5 snapshots, which is plenty to
-        # inspect early learning.
+        # Save a checkpoint every this many timesteps. Frequent saves mean
+        # you can Ctrl+C any time without losing more than a few minutes of
+        # progress. Saved checkpoints accumulate; older ones beyond
+        # n_checkpoints_to_keep (default 5) are auto-deleted by the Learner.
         save_every_ts=100_000,
 
-        # Where to write checkpoints. The Learner will create subfolders
-        # named by cumulative timestep count inside this path.
+        # Where to write checkpoints. The Learner appends a unix timestamp
+        # to make each session's folder unique, so resuming creates a fresh
+        # simple_bot-<new_timestamp>/ folder containing only the new saves.
+        # The cumulative timestep counter in BOOK_KEEPING_VARS.json continues
+        # from where the loaded checkpoint left off.
         checkpoints_save_folder="diego-bots/checkpoints/simple_bot",
+
+        # Where to LOAD the starting weights from. None = train from scratch.
+        # find_latest_checkpoint() returns the most recent saved checkpoint
+        # path or None if there is no prior run.
+        checkpoint_load_folder=resume_from,
 
         # Enable wandb logging. Requires `wandb login` to have been run once
         # so the API key is cached in your ~/.netrc. All runs land in the
