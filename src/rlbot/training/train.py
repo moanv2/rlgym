@@ -62,6 +62,26 @@ def train(cfg: Config) -> None:
     arch = get_layer_sizes(L.get("arch", "small"))
 
     log_cfg = cfg.logging
+    wandb_enabled = bool(log_cfg.get("wandb", True))
+    wandb_entity = log_cfg.get("wandb_entity")
+
+    # rlgym_ppo's Learner doesn't expose `wandb_entity` directly. If a team
+    # entity is set in the config, we pre-init the wandb run ourselves and
+    # hand it to the Learner via the `wandb_run` kwarg.
+    wandb_run = None
+    if wandb_enabled and wandb_entity:
+        import wandb
+
+        wandb_run = wandb.init(
+            entity=wandb_entity,
+            project=log_cfg.get("wandb_project", "rlgym-finalproject"),
+            group=log_cfg.get("wandb_group", cfg.experiment_name),
+            name=log_cfg.get("wandb_run") or None,
+            config=cfg.to_dict(),
+            reinit=True,
+        )
+        log.info(f"wandb run initialized at entity='{wandb_entity}' project='{wandb_run.project}'")
+
     learner = Learner(
         env_builder,
         n_proc=int(L.get("n_proc", 8)),
@@ -77,7 +97,8 @@ def train(cfg: Config) -> None:
         standardize_obs=bool(L.get("standardize_obs", False)),
         save_every_ts=int(L.get("save_every_ts", 1_000_000)),
         timestep_limit=int(L.get("timestep_limit", 1_000_000_000)),
-        log_to_wandb=bool(log_cfg.get("wandb", True)),
+        log_to_wandb=wandb_enabled,
+        wandb_run=wandb_run,
         wandb_project_name=log_cfg.get("wandb_project", "rlgym-finalproject"),
         wandb_group_name=log_cfg.get("wandb_group", cfg.experiment_name),
         wandb_run_name=log_cfg.get("wandb_run", None),

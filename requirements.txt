@@ -10,7 +10,7 @@
 
 numpy==1.26.4
 pyyaml==6.0.2
-wandb==0.17.5
+wandb>=0.27.0   # 0.18+ accepts the new wandb_v1_ long-form API key format
 tqdm==4.66.4
 rich==13.7.1
 
