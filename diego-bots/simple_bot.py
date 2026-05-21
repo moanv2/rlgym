@@ -252,9 +252,16 @@ if __name__ == "__main__":
         # named by cumulative timestep count inside this path.
         checkpoints_save_folder="diego-bots/checkpoints/simple_bot",
 
-        # Disable wandb for this run. Set to True and run `wandb login`
-        # first if you want the fancy dashboards.
-        log_to_wandb=False,
+        # Enable wandb logging. Requires `wandb login` to have been run once
+        # so the API key is cached in your ~/.netrc. All runs land in the
+        # 'rlgym-finalproject' project under whichever wandb entity your
+        # account defaults to (for Diego that is 'diego08-ie-university').
+        # wandb_group_name lets you cluster runs of the same experiment in
+        # the dashboard, useful when running multiple seeds.
+        log_to_wandb=True,
+        wandb_project_name="rlgym-finalproject",
+        wandb_group_name="simple_bot",
+        wandb_run_name=None,    # auto-generated run name; set to a string to force one
 
         # Real time rendering is off; we have no visualizer hooked up here.
         # Use scripts/visualize.py once you have a trained checkpoint.
