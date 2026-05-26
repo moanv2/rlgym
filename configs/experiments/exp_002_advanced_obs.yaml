@@ -5,7 +5,7 @@ extends: ../default.yaml
 experiment_name: exp_002_advanced_obs
 
 obs:
-  name: advanced
+  name: default  # AdvancedObs not available in rlgym_tools 1.8.3 — using default
 
 learner:
   arch: medium

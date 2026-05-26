@@ -15,10 +15,33 @@ state_setter:
     - name: default
       weight: 0.3
 
+rewards:
+  zero_sum: true
+  team_spirit: 0.0
+  opp_scale: 1.0
+  components:
+    - name: velocity_player_to_ball
+      weight: 0.01
+    - name: face_ball
+      weight: 0.02
+    - name: velocity_ball_to_goal
+      weight: 0.8
+    - name: touch_ball
+      weight: 0.02
+    - name: event
+      weight: 12.0
+      kwargs:
+        goal: 1.0
+        concede: -1.0
+        shot: 0.4
+        save: 0.4
+        demo: 0.05
+
 learner:
   arch: medium
-  timestep_limit: 1_000_000_000
+  timestep_limit: 2_000_000_000
   save_every_ts: 5_000_000
+  ppo_ent_coef: 0.001
 
 logging:
   wandb_group: exp_003_long_run

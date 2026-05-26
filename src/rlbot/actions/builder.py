@@ -8,9 +8,10 @@ def build_action_parser(config: dict[str, Any]):
     name = config.get("name", "lookup")
 
     if name == "lookup":
-        # Vendored — see src/rlbot/actions/lookup_action.py for why we don't import
-        # from rlgym-tools (v2 moved the module path).
-        from rlbot.actions.lookup_action import LookupAction
+        # Vendored. Marian's branch renamed the file to lookup_act.py; the
+        # original lookup_action.py is kept as a backward-compat copy so
+        # diego-bots/simple_bot.py's import path keeps working unchanged.
+        from rlbot.actions.lookup_act import LookupAction
 
         return LookupAction()
 

@@ -27,12 +27,7 @@ def build_state_setter(config: dict[str, Any]):
 
     if name == "weighted_sample":
         # Mix multiple state setters with weights — useful for curriculum.
-        try:
-            from rlgym_tools.extra_state_setters.weighted_sample_setter import WeightedSampleSetter
-        except ImportError as e:
-            raise ImportError(
-                "state_setter.name='weighted_sample' requires rlgym-tools."
-            ) from e
+        from rlbot.state_setters.weighted_sample_setter import WeightedSampleSetter
         components = config["components"]  # list of {name, weight, kwargs}
         setters = [build_state_setter(c) for c in components]
         weights = [float(c.get("weight", 1.0)) for c in components]
