@@ -51,7 +51,9 @@ def train(cfg: Config) -> None:
     seed_everything(cfg.seed)
 
     run_dir = CHECKPOINT_ROOT / cfg.experiment_name
-    _snapshot_run_metadata(cfg, run_dir)
+    run_dir.mkdir(parents=True, exist_ok=True)
+    # Save metadata to logs/, not checkpoints/ — rlgym_ppo expects only digit-named subdirs in checkpoint folder
+    _snapshot_run_metadata(cfg, LOG_ROOT)
 
     env_builder = make_env_builder(cfg.env, cfg.to_dict())
 
@@ -82,6 +84,7 @@ def train(cfg: Config) -> None:
         wandb_group_name=log_cfg.get("wandb_group", cfg.experiment_name),
         wandb_run_name=log_cfg.get("wandb_run", None),
         checkpoints_save_folder=str(run_dir),
+        add_unix_timestamp=False,  # disable timestamp so auto-resume works correctly
         policy_layer_sizes=arch,
         critic_layer_sizes=arch,
         render=False,
