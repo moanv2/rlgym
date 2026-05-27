@@ -21,10 +21,59 @@ Output:
 """
 
 # --------------------------------------------------------------------------
+# Experiment identity — change THIS string when you change rewards, obs,
+# architecture, or anything else that fundamentally changes the bot. Each
+# experiment has its own checkpoint folder so different experiments do not
+# pollute each other's checkpoints. Each wandb run name is also prefixed
+# with this, so you can overlay experiments cleanly in the dashboard.
+#
+# Examples to copy:
+#     "baseline"           - the original 3 reward components, plateaued at 11M
+#     "richer_rewards"     - 5 reward components (current)
+#     "nexto_rewards"      - ported Nexto reward function
+#     "advanced_obs"       - richer observation builder
+#
+# When you change this string and rerun, the bot starts training from
+# scratch in a fresh folder. The previous experiment's checkpoints stay
+# untouched as comparison baselines.
+# --------------------------------------------------------------------------
+# Fresh experiment: Nexto-style 10-component reward + 4 custom hardcoded
+# rewards (Supersonic, AerialBall, BigBoostProximity, BackboardDefense)
+# + 30/70 kickoff-vs-random state mix + medium 512x3 architecture.
+# Previous experiments are preserved in their own folders for comparison:
+#   - nexto_rewards/        : 5→10 component reward, 256x3, reached 130M
+#   - nexto_plus_kickoff/    : 14-component reward, 256x3, reached 17.6M
+EXPERIMENT_NAME = "nexto_plus_kickoff_512"
+
+# --------------------------------------------------------------------------
+# wandb display-name convention.
+#
+# Every run shows up in wandb as f"{WANDB_NAME_PREFIX}_{end_timesteps}_r{N}",
+# e.g. "baseline_70M_r3" — the prefix is fixed (Diego likes "baseline"), the
+# middle is the cumulative timesteps at the end of THIS session, and N is the
+# sequential session number.
+#
+# STARTING_RUN_NUMBER seeds the sequence so it lines up with what's already
+# in your wandb dashboard. Diego already has r1 (baseline_11M) and r2
+# (baseline_26M_r2) from before this auto-saving system existed, so the next
+# auto-saved session should be r3. Bump this once if you ever need to.
+# --------------------------------------------------------------------------
+WANDB_NAME_PREFIX = "baseline"
+STARTING_RUN_NUMBER = 3
+
+# --------------------------------------------------------------------------
 # Imports
 # --------------------------------------------------------------------------
 
+import atexit
+import json
+from datetime import datetime, timezone
 from pathlib import Path
+
+# Where per-session summary JSONs are saved on Ctrl+C or normal exit. One
+# file per run, globally numbered (run_001_*.json, run_002_*.json, ...) so
+# future analysis scripts can ingest the whole history at once.
+HISTORY_DIR = Path("history_and_summary")
 
 # rlgym_sim is the Python wrapper around the C++ RocketSim physics engine.
 # It gives us the make() factory that builds a fresh environment, which is
@@ -38,16 +87,9 @@ import rlgym_sim
 # the network from collected gameplay.
 from rlgym_ppo import Learner
 
-# Reward functions are the signals we hand the agent to nudge it toward
-# useful behavior. Each is a class that, on every timestep, returns a scalar
-# number for each player. CombinedReward stacks several rewards into one,
-# multiplying each by a weight so we can balance their influence.
-from rlgym_sim.utils.reward_functions import CombinedReward
-from rlgym_sim.utils.reward_functions.common_rewards import (
-    VelocityPlayerToBallReward,   # positive while the car is moving toward the ball
-    VelocityBallToGoalReward,     # positive while the ball is moving toward the opponent goal
-    EventReward,                  # one off bonus on specific events (goal, save, demo, etc.)
-)
+# Reward function is now constructed via build_nexto_style_reward() inside
+# build_env(). The previously-inlined CombinedReward + individual reward
+# imports moved into src/rlbot/rewards/nexto_style.py.
 
 # DefaultObs converts the raw game state into the fixed length numeric
 # vector that we feed into the policy network. Positions, velocities, ball
@@ -101,47 +143,85 @@ def build_env():
     no_touch_seconds = 10
     no_touch_ticks = int(no_touch_seconds * 120 / tick_skip)
 
-    # Build the reward function as a weighted sum of three components.
-    # The art of training RL bots is mostly in choosing rewards and weights.
+    # Reward function: Nexto-style 10-component base + 4 custom RL-physics
+    # rewards stacked on top, all wrapped in ZeroSumReward.
     #
-    # Some rules of thumb:
-    #   Continuous rewards fire on every step, so they accumulate fast and
-    #     should have small weights to avoid dominating the signal.
-    #   Event rewards fire rarely (a goal might happen every few minutes),
-    #     so they need large weights to actually register during learning.
-    #   Negative weights punish behavior. EventReward(concede=-1.0) here
-    #     teaches the bot that getting scored on is bad.
-    reward_fn = CombinedReward(
+    # The Nexto base (built unwrapped so we can compose more components into
+    # the same CombinedReward) covers general offense, defense, positioning,
+    # and event-based scoring. The 4 custom rewards on top exploit hardcoded
+    # game knowledge (Octane physics, big boost pad positions, ball/car
+    # height thresholds, defensive geometry) to surface skills that emerge
+    # slowly from the base alone:
+    #
+    #   - SupersonicReward       → use boost meaningfully, play at pace
+    #   - AerialBallReward       → go up when ball is up
+    #   - BigBoostProximityReward → grab 100-pads when empty
+    #   - BackboardDefenseReward → shadow defense positioning
+    #
+    # See src/rlbot/rewards/custom_rl.py and src/rlbot/utils/rl_constants.py
+    # for the physics values these rewards reference.
+    from rlgym_sim.utils.reward_functions import CombinedReward
+
+    from rlbot.rewards.custom_rl import (
+        AerialBallReward,
+        BackboardDefenseReward,
+        BigBoostProximityReward,
+        SupersonicReward,
+    )
+    from rlbot.rewards.nexto_style import build_nexto_style_reward
+    from rlbot.rewards.zero_sum import ZeroSumReward
+
+    # Build the Nexto base WITHOUT its own zero-sum wrapper so we can stack
+    # additional components alongside it and wrap the whole thing once at the end.
+    nexto_base = build_nexto_style_reward(zero_sum=False)
+
+    combined = CombinedReward(
         reward_functions=(
-            VelocityPlayerToBallReward(),
-            VelocityBallToGoalReward(),
-            EventReward(
-                goal=1.0,       # scoring is the only thing that ultimately matters
-                concede=-1.0,   # getting scored on is the opposite of scoring
-                shot=0.1,       # small bonus for shooting on net
-                demo=0.1,       # small bonus for demolishing the opponent
-            ),
+            nexto_base,                  # whole 10-component Nexto stack as one unit
+            SupersonicReward(),
+            AerialBallReward(),
+            BigBoostProximityReward(),
+            BackboardDefenseReward(),
         ),
         reward_weights=(
-            0.05,   # weak: this reward is easy to game and fires every step
-            0.5,    # medium: this is the offense oriented continuous signal
-            10.0,   # strong: events are rare, so multiply them up
+            1.0,    # nexto base counts as 1x (already weighted internally to ~12 max)
+            0.05,   # supersonic: cheap, fires often when boosting hard
+            0.5,    # aerial: sparse but valuable when it fires
+            0.3,    # big-boost proximity: only fires when low on boost
+            0.4,    # backboard defense: only fires in defensive scenarios
         ),
     )
+    reward_fn = ZeroSumReward(combined, team_spirit=0.0, opp_scale=1.0)
 
-    # Build and return the environment. Each named argument plugs in one
-    # of the modular components we just set up.
+    # State setter: 70% wild RandomState (broad exploration of states the
+    # bot might face mid-game) + 30% RandomKickoffSetter (forces practice
+    # of the 5 canonical kickoff positions using hardcoded coordinates from
+    # rl_constants.py). This is the curriculum-learning side of the new
+    # experiment — instead of only seeing chaos, the bot also does dedicated
+    # kickoff drills, which is the single highest-leverage situation in 1v1.
+    from rlbot.state_setters.kickoff_scenarios import RandomKickoffSetter
+    from rlbot.state_setters.weighted_sample_setter import WeightedSampleSetter
+
+    state_setter = WeightedSampleSetter(
+        state_setters=[
+            RandomState(
+                ball_rand_speed=True,
+                cars_rand_speed=True,
+                cars_on_ground=False,
+            ),
+            RandomKickoffSetter(),
+        ],
+        weights=[0.7, 0.3],
+    )
+
+    # Build and return the environment.
     return rlgym_sim.make(
         tick_skip=tick_skip,
         team_size=1,                 # 1v1 final, so one car per side
         spawn_opponents=True,        # spawn a second car for self play
         reward_fn=reward_fn,
         obs_builder=DefaultObs(),
-        state_setter=RandomState(
-            ball_rand_speed=True,    # ball starts with a random velocity
-            cars_rand_speed=True,    # cars start with random velocities
-            cars_on_ground=False,    # half the time, cars spawn airborne
-        ),
+        state_setter=state_setter,
         terminal_conditions=[
             GoalScoredCondition(),
             NoTouchTimeoutCondition(no_touch_ticks),
@@ -155,7 +235,7 @@ def build_env():
 # --------------------------------------------------------------------------
 
 # --------------------------------------------------------------------------
-# Auto resume from the latest saved checkpoint.
+# Auto resume from the latest saved checkpoint WITHIN the current experiment.
 #
 # PPO does not store gameplay episodes anywhere. What it stores is the policy
 # weights, the critic weights, the Adam optimizer state, and the cumulative
@@ -166,21 +246,29 @@ def build_env():
 #
 # Folder layout produced by rlgym_ppo:
 #   diego-bots/checkpoints/
-#     simple_bot-<unix_ts>/        one folder per training session
-#       100000/                     one folder per save_every_ts hit
-#         PPO_POLICY.pt + others
-#       200008/
+#     <EXPERIMENT_NAME>/                  base folder for this experiment
+#       <EXPERIMENT_NAME>-<unix_ts>/      one folder per training session
+#         100000/                          one folder per save_every_ts hit
+#           PPO_POLICY.pt + others
+#         200008/
+#         ...
+#     <OTHER_EXPERIMENT_NAME>/            other experiments live alongside
 #       ...
 #
-# We pick the most recent session, then the highest numbered timestep inside.
-# Returns None if no checkpoint exists yet, in which case training starts fresh.
+# We scan only the current experiment's folder so different experiments
+# never resume from each other's weights. Returns None if no checkpoint
+# exists yet for this experiment, in which case training starts fresh.
 # --------------------------------------------------------------------------
-def find_latest_checkpoint(base: str = "diego-bots/checkpoints") -> str | None:
-    base_path = Path(base)
+def find_latest_checkpoint(experiment: str = EXPERIMENT_NAME) -> str | None:
+    base_path = Path("diego-bots/checkpoints") / experiment
     if not base_path.exists():
         return None
+    # Scan any direct subdirectory of the experiment folder. We accept folder
+    # names that don't start with the experiment string so that archived
+    # checkpoints with their original naming (e.g. simple_bot-<ts>/) still
+    # resolve when you switch EXPERIMENT_NAME back to compare.
     runs = sorted(
-        [p for p in base_path.glob("simple_bot*") if p.is_dir()],
+        [p for p in base_path.iterdir() if p.is_dir()],
         key=lambda p: p.stat().st_mtime,
         reverse=True,
     )
@@ -190,6 +278,224 @@ def find_latest_checkpoint(base: str = "diego-bots/checkpoints") -> str | None:
             latest = max(timesteps, key=lambda p: int(p.name))
             return str(latest)
     return None
+
+
+# --------------------------------------------------------------------------
+# Per-session run summary — saved to history_and_summary/ on every exit.
+#
+# Each Ctrl+C (or normal end) writes a JSON snapshot of the session: which
+# experiment, which wandb run, final metrics, cumulative timesteps, the
+# reason for stopping, and a snapshot of the important config knobs.
+#
+# Files are globally numbered so later analysis can ingest the whole history
+# in order:  history_and_summary/run_001_<experiment>.json
+#            history_and_summary/run_002_<experiment>.json  etc.
+# --------------------------------------------------------------------------
+def _format_steps(n: int) -> str:
+    """Format a cumulative timestep count as 'M' up to 999M and 'B' from 1B.
+    Used by both the at-start wandb run name and the at-end rename."""
+    if n >= 1_000_000_000:
+        if n % 1_000_000_000 == 0:
+            return f"{n // 1_000_000_000}B"
+        return f"{n / 1_000_000_000:.1f}B"
+    return f"{round(n / 1_000_000)}M"
+
+
+def _next_run_number() -> int:
+    """Next sequential run number for both the JSON filename and the
+    wandb `_rN` suffix. Both share the same number so files and dashboard
+    entries always align (run_003_*.json on disk == r3 in wandb)."""
+    HISTORY_DIR.mkdir(parents=True, exist_ok=True)
+    numbers: list[int] = []
+    for f in HISTORY_DIR.glob("run_*.json"):
+        try:
+            numbers.append(int(f.stem.split("_")[1]))
+        except (IndexError, ValueError):
+            continue
+    if not numbers:
+        return STARTING_RUN_NUMBER
+    return max(numbers) + 1
+
+
+def _capture_config() -> dict:
+    """Snapshot of the levers worth A/B comparing across runs.
+
+    Update this whenever you change a knob you want to track in the history.
+    Not exhaustive on purpose — captures the important stuff for analysis,
+    not every internal default of rlgym_ppo.
+    """
+    return {
+        "experiment_name": EXPERIMENT_NAME,
+        "n_proc": 14,
+        "ppo_batch_size": 100_000,
+        "ts_per_iteration": 100_000,
+        "ppo_minibatch_size": 100_000,
+        "exp_buffer_size": 300_000,
+        "min_inference_size": 140,
+        "ppo_epochs": 2,
+        "ppo_ent_coef": 0.01,
+        "policy_layer_sizes": [512, 512, 512],
+        "critic_layer_sizes": [512, 512, 512],
+        "standardize_returns": True,
+        "standardize_obs": False,
+        "save_every_ts": 100_000,
+        "reward_function": "ZeroSumReward(CombinedReward(nexto_base [unwrapped] + custom_rl rewards))",
+        "reward_components": [
+            "nexto_base (10-component Nexto-style, weight 1.0)",
+            "SupersonicReward (weight 0.05)",
+            "AerialBallReward (weight 0.5)",
+            "BigBoostProximityReward (weight 0.3)",
+            "BackboardDefenseReward (weight 0.4)",
+            "ZeroSumReward wrapping (team_spirit=0, opp_scale=1)",
+        ],
+        "nexto_base_components": [
+            "VelocityPlayerToBallReward (weight 0.6)",
+            "LiuDistancePlayerToBallReward (weight 0.7)",
+            "VelocityBallToGoalReward (weight 2.0)",
+            "LiuDistanceBallToGoalReward (weight 1.0)",
+            "AlignBallGoal(defense=1, offense=1) (weight 0.4)",
+            "BallYCoordinateReward (weight 0.5)",
+            "FaceBallReward (weight 0.3)",
+            "TouchBallReward (weight 5.0)",
+            "SaveBoostReward (weight 0.05)",
+            "EventReward(goal=10, concede=-10, shot=1.5, save=3, touch=0.05, demo=0.5, boost_pickup=0.3) (weight 12.0)",
+        ],
+        "obs_builder": "DefaultObs",
+        "action_parser": "LookupAction (90 discrete actions)",
+        "state_setter": "WeightedSampleSetter(RandomState 0.7 + RandomKickoffSetter 0.3)",
+    }
+
+
+def _serializable_wandb_summary() -> dict:
+    """Best-effort capture of wandb.run.summary as plain JSON-safe values."""
+    try:
+        import wandb
+    except ImportError:
+        return {}
+    if wandb.run is None:
+        return {}
+    out: dict = {}
+    try:
+        items = list(wandb.run.summary.items())
+    except Exception:
+        return {}
+    for key, value in items:
+        if str(key).startswith("_"):
+            continue
+        try:
+            json.dumps(value)
+            out[key] = value
+        except (TypeError, ValueError):
+            try:
+                out[key] = float(value)
+            except Exception:
+                out[key] = str(value)
+    return out
+
+
+def _rename_wandb_run(entity: str, project: str, run_id: str, new_name: str) -> None:
+    """Rename a wandb run to its final story-friendly name via the public API.
+
+    We need to use wandb's REST API (wandb.Api) rather than wandb.run.name
+    because by the time this runs, the rlgym_ppo Learner has already called
+    wandb.finish() and the in-process run handle is closed.
+    """
+    try:
+        import wandb
+
+        api = wandb.Api()
+        wb_run = api.run(f"{entity}/{project}/{run_id}")
+        wb_run.name = new_name
+        wb_run.save()
+        print(f"[wandb] renamed run to {new_name}")
+    except Exception as exc:
+        print(f"[wandb] rename skipped: {exc}")
+
+
+# Module-level flag so save_run_summary is idempotent. Multiple paths can
+# trigger it (try/except, finally, atexit) — but it should only write once.
+_summary_saved: bool = False
+
+
+def save_run_summary(run_name: str, started_at: datetime, stop_reason: str) -> None:
+    """Write a single JSON file describing this training session, and rename
+    the wandb run to the final story-friendly name based on cumulative end
+    timesteps.
+
+    Idempotent — safe to call multiple times. Subsequent calls are no-ops.
+    """
+    global _summary_saved
+    if _summary_saved:
+        return
+    _summary_saved = True
+
+    ended_at = datetime.now(timezone.utc)
+    run_number = _next_run_number()
+
+    summary = {
+        "run_number": run_number,
+        "experiment_name": EXPERIMENT_NAME,
+        "wandb_run_name": run_name,
+        "wandb_final_name": None,  # filled in after we rename
+        "stop_reason": stop_reason,
+        "started_at": started_at.isoformat(),
+        "ended_at": ended_at.isoformat(),
+        "duration_seconds": round((ended_at - started_at).total_seconds(), 1),
+        "wandb_run_id": None,
+        "wandb_run_url": None,
+        "wandb_entity": None,
+        "wandb_project": None,
+        "cumulative_timesteps_end": None,
+        "final_metrics": _serializable_wandb_summary(),
+        "config": _capture_config(),
+    }
+
+    # wandb run id + url + entity + project, if still accessible after Ctrl+C
+    try:
+        import wandb
+        if wandb.run is not None:
+            summary["wandb_run_id"] = wandb.run.id
+            summary["wandb_run_url"] = wandb.run.url
+            summary["wandb_entity"] = wandb.run.entity
+            summary["wandb_project"] = wandb.run.project
+    except Exception:
+        pass
+
+    # Pull cumulative_timesteps from the last on-disk checkpoint, which is
+    # the most authoritative source even if wandb is misbehaving.
+    latest_ckpt = find_latest_checkpoint()
+    if latest_ckpt:
+        bk_path = Path(latest_ckpt) / "BOOK_KEEPING_VARS.json"
+        if bk_path.exists():
+            try:
+                bk = json.loads(bk_path.read_text())
+                summary["cumulative_timesteps_end"] = bk.get("cumulative_timesteps")
+            except Exception:
+                pass
+
+    # Rename the wandb run to f"{prefix}_{end_ts_M_or_B}_r{N}", e.g.
+    # baseline_70M_r3. Only when we have all three required pieces: run_id,
+    # entity/project, and cumulative_timesteps_end.
+    end_ts = summary["cumulative_timesteps_end"]
+    if (
+        summary["wandb_run_id"]
+        and summary["wandb_entity"]
+        and summary["wandb_project"]
+        and end_ts is not None
+    ):
+        final_name = f"{WANDB_NAME_PREFIX}_{_format_steps(int(end_ts))}_r{run_number}"
+        _rename_wandb_run(
+            summary["wandb_entity"],
+            summary["wandb_project"],
+            summary["wandb_run_id"],
+            final_name,
+        )
+        summary["wandb_final_name"] = final_name
+
+    HISTORY_DIR.mkdir(parents=True, exist_ok=True)
+    out_path = HISTORY_DIR / f"run_{run_number:03d}_{EXPERIMENT_NAME}.json"
+    out_path.write_text(json.dumps(summary, indent=2, default=str), encoding="utf-8")
+    print(f"[summary] saved run #{run_number} to {out_path}")
 
 
 if __name__ == "__main__":
@@ -213,25 +519,49 @@ if __name__ == "__main__":
     #
     # Knobs explained:
 
+    print(f"[experiment] {EXPERIMENT_NAME}")
     resume_from = find_latest_checkpoint()
     if resume_from:
         print(f"[resume] loading checkpoint: {resume_from}")
     else:
-        print("[fresh] no checkpoint found, training from scratch")
+        print(f"[fresh] no checkpoint found for experiment '{EXPERIMENT_NAME}', training from scratch")
+
+    # Build the wandb run name as <experiment>_<XM_or_B>. Each experiment's
+    # runs cluster together in the dashboard and overlay cleanly on charts.
+    # Format examples:
+    #     richer_rewards_0M       (fresh start of the richer_rewards experiment)
+    #     richer_rewards_11M      (resumed at ~11M)
+    #     baseline_11M            (the previous baseline plateau)
+    #     nexto_rewards_500M      (a future experiment)
+    # Add a suffix in the wandb UI after the run finishes if you want to tag
+    # it (_PLATEAU, _BREAKTHROUGH, _REWARD_SHAPED, etc.) for the final report.
+    _start_ts = 0
+    if resume_from:
+        try:
+            _start_ts = int(Path(resume_from).name)
+        except ValueError:
+            _start_ts = 0
+
+    _run_name = f"{EXPERIMENT_NAME}_{_format_steps(_start_ts)}"
+    print(f"[wandb] run name: {_run_name}")
 
     learner = Learner(
         build_env,
 
         # How many copies of the env to run in parallel. Each one lives in
         # its own process. More workers = more samples per second, but
-        # more RAM and CPU contention. Rule of thumb: (CPU cores - 1).
-        n_proc=8,
+        # more RAM and CPU contention. Rule of thumb: ~1.5x physical cores.
+        # Diego's machine has 12 physical / 24 logical cores, so 14 leaves
+        # plenty of headroom for OS / browser / training side-tools.
+        # Was 8 — bumped to 14 to push Overall Steps/sec from ~7k toward 12k+.
+        n_proc=14,
 
         # The Learner batches inference requests across workers for GPU
         # efficiency. min_inference_size says: do not run the policy
         # forward pass until at least this many env steps are queued up.
-        # 80 is a reasonable middle ground for 8 workers.
-        min_inference_size=80,
+        # Bumped from 80 → 140 to match the higher n_proc — larger GPU
+        # batches per forward pass = better GPU utilization.
+        min_inference_size=140,
 
         # Optional callback for per iteration metrics. None means default
         # console reporting only.
@@ -239,24 +569,28 @@ if __name__ == "__main__":
 
         # PPO algorithm hyperparameters. These are the actual learning levers.
         #
-        # ppo_batch_size: total number of timesteps the gradient sees per
-        # PPO update. Bigger batches give more stable gradients but slower
-        # iteration cadence.
-        ppo_batch_size=50_000,
+        # Batches bumped from 50k → 100k. Rationale: at ~12k Steps/sec with
+        # n_proc=14, a 50k batch fills in ~4s — too short, the PPO update
+        # overhead becomes a larger fraction of iteration time. 100k batches
+        # let each rollout phase last ~8s, smoothing the iteration cadence
+        # and giving the gradient a more stable signal per update. Combined
+        # with the higher throughput, you get bigger learning steps per
+        # iteration (was ~7k effective, now ~11-15k).
+        ppo_batch_size=100_000,
 
-        # ts_per_iteration: how many timesteps to collect before each PPO
-        # update. We keep this equal to the batch size for simplicity.
-        ts_per_iteration=50_000,
+        # ts_per_iteration: keep equal to batch size for simplicity (full
+        # on-policy batch per update with no slack).
+        ts_per_iteration=100_000,
 
-        # exp_buffer_size: rolling buffer of recent experience that the
-        # Learner may sample from. Slightly larger than batch size gives
-        # the algorithm a small amount of off policy slack.
-        exp_buffer_size=150_000,
+        # exp_buffer_size: rolling buffer of recent experience. Stay at 3x
+        # batch size so a small amount of slightly off-policy data is
+        # available without overwhelming the on-policy assumption.
+        exp_buffer_size=300_000,
 
         # ppo_minibatch_size: gradient descent batch size inside the PPO
-        # update. Keep equal to ppo_batch_size for the simplest behavior
-        # (full batch updates). Smaller values mean SGD with more steps.
-        ppo_minibatch_size=50_000,
+        # update. Keep equal to ppo_batch_size for full-batch updates (the
+        # simplest and most stable choice for PPO).
+        ppo_minibatch_size=100_000,
 
         # ppo_ent_coef: entropy bonus, encourages exploration. Higher
         # values keep the policy stochastic for longer; lower values let
@@ -280,13 +614,14 @@ if __name__ == "__main__":
         # this off. Custom observation builders may want it on.
         standardize_obs=False,
 
-        # Neural network architecture. policy_layer_sizes is the actor
-        # (the network that picks actions), critic_layer_sizes is the
-        # critic (the network that estimates value). Both are vanilla MLPs.
-        # (256, 256, 256) is a small but solid first try. Doubling these
-        # would make the bot stronger eventually but multiply training time.
-        policy_layer_sizes=(256, 256, 256),
-        critic_layer_sizes=(256, 256, 256),
+        # Neural network architecture: medium (512x3), matching Marian's 1.35B
+        # bot. Used because we now have a 14-component reward signal that
+        # gives the bigger network meaningful gradient. ~15-20% slower per
+        # timestep vs 256x3 but higher skill ceiling. The previous
+        # nexto_plus_kickoff experiment (256x3, 17.6M) stays preserved in its
+        # own folder as a comparison baseline.
+        policy_layer_sizes=(512, 512, 512),
+        critic_layer_sizes=(512, 512, 512),
 
         # Total CUMULATIVE environment steps allowed before the Learner exits.
         # This is the sum across all training sessions, not just this one.
@@ -303,12 +638,13 @@ if __name__ == "__main__":
         # n_checkpoints_to_keep (default 5) are auto-deleted by the Learner.
         save_every_ts=100_000,
 
-        # Where to write checkpoints. The Learner appends a unix timestamp
-        # to make each session's folder unique, so resuming creates a fresh
-        # simple_bot-<new_timestamp>/ folder containing only the new saves.
+        # Where to write checkpoints. Each experiment gets its own subfolder
+        # so different experiments do not pollute each other. The Learner
+        # appends a unix timestamp inside that folder for per-session uniqueness:
+        #     diego-bots/checkpoints/<EXPERIMENT_NAME>/<EXPERIMENT_NAME>-<unix_ts>/
         # The cumulative timestep counter in BOOK_KEEPING_VARS.json continues
-        # from where the loaded checkpoint left off.
-        checkpoints_save_folder="diego-bots/checkpoints/simple_bot",
+        # from where the loaded checkpoint left off, even across sessions.
+        checkpoints_save_folder=f"diego-bots/checkpoints/{EXPERIMENT_NAME}/{EXPERIMENT_NAME}",
 
         # Where to LOAD the starting weights from. None = train from scratch.
         # find_latest_checkpoint() returns the most recent saved checkpoint
@@ -324,7 +660,7 @@ if __name__ == "__main__":
         log_to_wandb=True,
         wandb_project_name="rlgym-finalproject",
         wandb_group_name="simple_bot",
-        wandb_run_name=None,    # auto-generated run name; set to a string to force one
+        wandb_run_name=_run_name,    # self-describing per-session name
 
         # Real time rendering is off; we have no visualizer hooked up here.
         # Use scripts/visualize.py once you have a trained checkpoint.
@@ -349,4 +685,39 @@ if __name__ == "__main__":
     #     the better and is the main thing your hardware controls.
     #
     # Watch Policy Reward most of all. That is the bot getting smarter.
-    learner.learn()
+    #
+    # learner.learn() is wrapped in BOTH try/finally AND atexit so the session
+    # summary lands no matter how the run ends:
+    #   - "completed"        : timestep_limit reached
+    #   - "keyboard_interrupt": Ctrl+C
+    #   - "exception: ..."    : something blew up (rare, mostly rocketsim crashes)
+    #   - "atexit_fallback"   : process exited bypassing the try/finally
+    #                           (rlgym_ppo sometimes does this via os._exit on
+    #                           multiprocess teardown — atexit catches it)
+    #
+    # The summary is idempotent (see save_run_summary's `_summary_saved` flag)
+    # so the multiple registration paths never produce duplicate entries.
+    _session_started_at = datetime.now(timezone.utc)
+    _session_stop_reason = "completed"
+
+    # Register atexit FIRST so it fires even if try/finally is bypassed by
+    # process-exit paths the Learner takes during multiprocess teardown.
+    atexit.register(
+        save_run_summary,
+        _run_name,
+        _session_started_at,
+        "atexit_fallback",
+    )
+
+    try:
+        learner.learn()
+    except KeyboardInterrupt:
+        _session_stop_reason = "keyboard_interrupt"
+        print("\n[interrupted] training stopped by user — saving session summary...")
+        save_run_summary(_run_name, _session_started_at, _session_stop_reason)
+    except Exception as _exc:
+        _session_stop_reason = f"exception: {type(_exc).__name__}: {_exc}"
+        save_run_summary(_run_name, _session_started_at, _session_stop_reason)
+        raise
+    finally:
+        save_run_summary(_run_name, _session_started_at, _session_stop_reason)
