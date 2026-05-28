@@ -1,0 +1,83 @@
+# ============================================================================
+# CURRICULUM STAGE 1 of 4 — "Chase"  (Bronze–Silver: learn to touch the ball)
+# ============================================================================
+# Goal: a fresh (random) policy that reliably drives at the ball, hits it, and
+# keeps using its jump. The guide is explicit that goal rewards *before* the bot can
+# hit the ball just add noise ("making a good bot" → Early Stages).
+#
+# DEVIATION (this run): the policy learned to chase AND score faster than the stage-1
+# script expects, but regressed hard on its jump — it stopped jumping and never uses
+# its second/air jump. So we (a) bumped the jump/air shaping, (b) added a double_jump
+# reward, and (c) pulled the *modest* scoring + boost-economy events forward from
+# phases 5–6 (exp_005/exp_006) since the bot is already scoring. Goal/boost weights are
+# kept at the guide's modest scale so they don't drown out exploration. Concede /
+# zero-sum / strong_touch still arrive properly in exp_005.
+#
+# This is the ONLY stage that trains from scratch. Stages 2-4 warm-start from the
+# previous stage via `learner.init_from`, so obs / action / arch are LOCKED for the
+# whole curriculum (changing any of them invalidates the carried-over network).
+#   obs=advanced, action=lookup, arch=large  →  fixed across exp_004…exp_007.
+#
+# Run:  python -m rlbot.training.train --config configs/experiments/exp_004_chase.yaml
+extends: ../default.yaml
+
+experiment_name: exp_004_chase
+
+obs:
+  name: advanced          # LOCKED for the curriculum (do not change between stages)
+
+action:
+  name: lookup            # LOCKED
+
+state_setter:
+  name: random
+  ball_rand_speed: true
+  cars_rand_speed: true
+  cars_on_ground: false   # spawns airborne half the time → early air-control practice
+
+rewards:
+  # Shaping stays NOT zero-sum: it's individual gameplay tuning, and the new scoring
+  # events here are a positive nudge only (no concede penalty) — zero-sum scoring
+  # arrives in exp_005 (guide → zero-sum).
+  zero_sum: false
+  components:
+    - name: speed_toward_ball   # never-negative; pulls the bot at the ball
+      weight: 5.0
+    - name: face_ball           # don't drive at the ball backwards
+      weight: 1.0
+    - name: in_air              # jumping / air time — bumped 0.15 -> 0.4: the bot had
+      weight: 0.4               # stopped jumping; guide says raise this when that happens
+    - name: double_jump         # NEW: reward spending the *second* jump (dodge / double
+      weight: 0.3               # jump) so the bot stops bypassing it — gateway to aerials
+    - name: save_boost          # NEW: sqrt(boost) — value keeping boost over running empty
+      weight: 0.3
+    - name: velocity_ball_to_goal  # NEW: scoring shaping — send the ball net-ward
+      weight: 0.75
+    - name: event               # the one big signal: actually touch the ball (unchanged)
+      weight: 50.0
+      kwargs:
+        touch: 1.0
+    - name: event               # NEW: scoring + boost-collection events on a separate,
+      weight: 20.0              # MODEST bus (matches exp_005/006 scale, not the 50x touch one)
+      kwargs:
+        goal:         1.0       # +20 / goal — modest on purpose (giant goal rewards kill exploration)
+        shot:         0.2       # +4  / shot on net
+        boost_pickup: 0.5       # +10 / full pad — actively collect boost
+
+learner:
+  arch: large               # LOCKED across the curriculum (1024,1024,1024)
+  policy_lr: 2.0e-4         # guide: ~2e-4 for a bot that can't score yet
+  critic_lr: 2.0e-4
+  ppo_ent_coef: 0.01        # guide's "golden" exploration value
+  ppo_epochs: 3
+  ts_per_iteration: 50_000  # small batches are fine in early learning
+  ppo_batch_size: 50_000
+  ppo_minibatch_size: 25_000
+  exp_buffer_size: 150_000
+  save_every_ts: 5_000_000
+  n_checkpoints_to_keep: 25
+  add_unix_timestamp: false # stable checkpoint paths so the next stage can find them
+  timestep_limit: 100_000_000   # CUMULATIVE budget — move on once touches are reliable
+
+logging:
+  wandb_group: exp_004_chase

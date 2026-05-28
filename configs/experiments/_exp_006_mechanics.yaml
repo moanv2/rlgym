@@ -1,0 +1,57 @@
+# ============================================================================
+# CURRICULUM STAGE 3 of 4 — "Mechanics"  (Gold–Plat: aerials, boost, demos)
+# ============================================================================
+# The bot scores on the ground; now grow its toolkit (guide → Middle Stages):
+#   - air_touch: strong encouragement to hit the ball in the air. Gated on BOTH
+#     airtime and ball height so it learns real aerials, not lame high wall-reads.
+#   - save_boost (sqrt of boost): stop wasting boost; value having some over none.
+#   - boost_pickup added to the event reward so it actively collects boost.
+#   - demo bumped up — you asked for the bot to go for demolitions. It's zero-sum,
+#     so a demo also hurts the victim (exactly what a demo should do).
+#   - strong_touch up a touch; saves now rewarded.
+#
+# Warm-starts from Stage 2. Cumulative budget 500M (~250M new steps).
+extends: ./exp_005_score.yaml
+
+experiment_name: exp_006_mechanics
+
+rewards:
+  zero_sum: true
+  team_spirit: 0.0
+  opp_scale: 1.0
+  components:
+    - name: speed_toward_ball
+      weight: 0.3
+    - name: in_air
+      weight: 0.05
+    - name: velocity_ball_to_goal
+      weight: 1.0
+    - name: strong_touch
+      weight: 1.5
+    - name: air_touch               # NEW: reward aerial touches (height x airtime)
+      weight: 1.0
+    - name: save_boost              # NEW: keep boost, don't waste it
+      weight: 0.5
+    - name: event
+      weight: 20.0
+      kwargs:
+        goal:         1.0
+        concede:     -1.0
+        shot:         0.2
+        save:         0.5
+        demo:         0.3          # <-- demolitions matter now
+        boost_pickup: 0.5          # actively grab boost (pads + big boosts)
+
+learner:
+  policy_lr: 1.0e-4         # guide: ~1e-4 for the middle stages
+  critic_lr: 1.0e-4
+  ts_per_iteration: 200_000 # bigger batches now that play is complex
+  ppo_batch_size: 200_000
+  ppo_minibatch_size: 50_000
+  exp_buffer_size: 600_000
+  save_every_ts: 10_000_000
+  init_from: exp_005_score  # override the inherited Stage-1 pointer
+  timestep_limit: 500_000_000
+
+logging:
+  wandb_group: exp_006_mechanics

@@ -1,0 +1,25 @@
+# Stage 4 "Polish": minimal shaping, aggression bias, let it cook. This is the
+# long run that consumes most of the ~1B-step budget. Mirrors exp_007_polish.yaml.
+zero_sum: true
+team_spirit: 0.0
+opp_scale: 1.0
+components:
+  - name: speed_toward_ball
+    weight: 0.1
+  - name: velocity_ball_to_goal
+    weight: 1.0
+  - name: strong_touch
+    weight: 1.0
+  - name: air_touch
+    weight: 1.0
+  - name: save_boost
+    weight: 0.5
+  - name: event
+    weight: 20.0
+    kwargs:
+      goal:         1.0
+      concede:     -0.8     # aggression_bias = 0.2 → fight to score, not just defend
+      shot:         0.2
+      save:         0.5
+      demo:         0.35
+      boost_pickup: 0.5

@@ -1,19 +1,33 @@
-# Stage 2: shift weight toward goal-scoring once the bot reliably hits the ball.
+# Stage 2 "Score & control": now zero-sum with a real concede penalty; the goal event
+# is DRASTICALLY larger than stage 1 (+80 / -80) so scoring leads the gradient. Adds
+# `align_ball_goal` for positioning at the ball and drops the flat-touch bootstrap
+# (warm-start ≠ cold start). Mirrors configs/experiments/exp_005_score.yaml. Paste
+# under `rewards:` to reuse.
 zero_sum: true
 team_spirit: 0.0
 opp_scale: 1.0
 components:
-  - name: velocity_player_to_ball
-    weight: 0.03
-  - name: velocity_ball_to_goal
-    weight: 0.6
-  - name: touch_ball
-    weight: 0.05
-  - name: event
-    weight: 12.0
+  - name: speed_toward_ball     # still strong: keeps flips instrumental for chase
+    weight: 5.0
+  - name: face_ball
+    weight: 0.5
+  - name: in_air                # insurance — jump habit is established
+    weight: 0.5
+  - name: double_jump           # DOWN from 1.25 — was being spammed; flips now earn
+    weight: 0.4                 # their value via speed_toward_ball instead
+  - name: save_boost
+    weight: 0.3
+  - name: velocity_ball_to_goal # dense path to goal; goal event leads
+    weight: 5.0
+  - name: strong_touch          # real strikes pay, taps earn ~0
+    weight: 5.0
+  - name: align_ball_goal       # per-step positioning — approach from the goal-side
+    weight: 1.0
+  - name: event                 # DRASTICALLY larger scoring + defense events
+    weight: 80.0
     kwargs:
-      goal: 1.0
-      concede: -1.0
-      shot: 0.15
-      save: 0.3
-      demo: 0.1
+      goal:         1.0         # +80 / goal
+      concede:     -1.0         # -80 / concede — defense is real now
+      shot:         0.3         # +24 / shot on net
+      save:         0.5         # +40 / save
+      boost_pickup: 0.1         # +8 / full pad

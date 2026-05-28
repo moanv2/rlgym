@@ -1,0 +1,54 @@
+# ============================================================================
+# CURRICULUM STAGE 2 of 4 — "Score"  (learning to put the ball in the net)
+# ============================================================================
+# The bot can hit the ball now, so we teach it where the ball should GO.
+#   - Introduce velocity_ball_to_goal (the guide's main scoring encouragement;
+#     should be a fair bit stronger than speed_toward_ball).
+#   - Replace the easily-farmed flat touch with strong_touch (scaled by how hard
+#     the bot hits), and shrink the move-to-ball reward a lot.
+#   - Add a MODEST goal/concede event. The guide warns *hard* against giant goal
+#     rewards early (they drown out everything and kill exploration) — weight 20,
+#     not 100.
+#   - Rewards are now zero-sum: scoring, conceding and demos are all things the
+#     opponent should be trying to prevent (1v1 → team_spirit stays 0).
+#
+# Warm-starts from Stage 1's policy. `timestep_limit` is CUMULATIVE: 250M total
+# means ~150M new steps on top of Stage 1's 100M.
+extends: ./exp_004_chase.yaml
+
+experiment_name: exp_005_score
+
+rewards:
+  zero_sum: true
+  team_spirit: 0.0
+  opp_scale: 1.0
+  components:
+    - name: speed_toward_ball       # mostly learned — keep a small pull
+      weight: 0.5
+    - name: in_air
+      weight: 0.10
+    - name: velocity_ball_to_goal   # NEW: drive the ball toward their net
+      weight: 1.0
+    - name: strong_touch            # NEW: reward strong hits, not gentle pushes
+      weight: 1.0
+    - name: event
+      weight: 20.0
+      kwargs:
+        goal:    1.0
+        concede: -1.0
+        shot:    0.2
+        demo:    0.1
+
+learner:
+  policy_lr: 1.5e-4         # easing down out of the early stage
+  critic_lr: 1.5e-4
+  ts_per_iteration: 100_000 # guide: bump to 100k once the bot is hitting the ball
+  ppo_batch_size: 100_000
+  ppo_minibatch_size: 25_000
+  exp_buffer_size: 300_000
+  save_every_ts: 5_000_000
+  init_from: exp_004_chase  # warm-start the policy/critic from Stage 1
+  timestep_limit: 250_000_000
+
+logging:
+  wandb_group: exp_005_score

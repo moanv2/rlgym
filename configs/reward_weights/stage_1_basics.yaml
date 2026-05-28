@@ -1,19 +1,31 @@
-# Stage 1: get the bot moving toward the ball and facing it.
-# Use this as `rewards:` in an experiment YAML (paste contents under that key).
-zero_sum: true
-team_spirit: 0.0
-opp_scale: 1.0
+# Stage 1 "Chase": get the bot driving at, facing, and TOUCHING the ball — and keep
+# it jumping (incl. its second/air jump). Mirrors configs/experiments/exp_004_chase.yaml.
+# Paste under `rewards:` to reuse.
+#
+# Strengthened after the bot regressed on jumping: in_air bumped, double_jump added,
+# and the MODEST scoring + boost events pulled forward from phases 5–6 (the bot was
+# already scoring). See the exp_004 header for the full rationale.
+zero_sum: false               # movement/touch shaping shouldn't be zero-sum
 components:
-  - name: velocity_player_to_ball
-    weight: 0.10
+  - name: speed_toward_ball   # never-negative move-to-ball (better than velocity_player_to_ball)
+    weight: 5.0
   - name: face_ball
-    weight: 0.05
-  - name: velocity_ball_to_goal
-    weight: 0.30
-  - name: event
-    weight: 8.0
+    weight: 1.0
+  - name: in_air              # jumping / air time — bumped 0.15 -> 0.4 (anti "forgot how to jump")
+    weight: 0.4
+  - name: double_jump         # reward spending the second/air jump (dodge / double jump)
+    weight: 0.3
+  - name: save_boost          # sqrt(boost) — value keeping boost
+    weight: 0.3
+  - name: velocity_ball_to_goal  # scoring shaping — send the ball net-ward
+    weight: 0.75
+  - name: event               # the big touch signal
+    weight: 50.0
     kwargs:
-      goal: 1.0
-      concede: -1.0
-      shot: 0.1
-      demo: 0.1
+      touch: 1.0
+  - name: event               # modest scoring + boost-collection events (phases 5–6 scale)
+    weight: 20.0
+    kwargs:
+      goal:         1.0
+      shot:         0.2
+      boost_pickup: 0.5

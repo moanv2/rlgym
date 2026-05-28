@@ -1,0 +1,27 @@
+# Stage 3 "Mechanics": aerials, boost economy, and demolitions. Mirrors
+# exp_006_mechanics.yaml. Paste under `rewards:` to reuse.
+zero_sum: true
+team_spirit: 0.0
+opp_scale: 1.0
+components:
+  - name: speed_toward_ball
+    weight: 0.3
+  - name: in_air
+    weight: 0.05
+  - name: velocity_ball_to_goal
+    weight: 1.0
+  - name: strong_touch
+    weight: 1.5
+  - name: air_touch             # aerial touch = min(airtime frac, ball height frac)
+    weight: 1.0
+  - name: save_boost            # sqrt(boost) — stop wasting boost
+    weight: 0.5
+  - name: event
+    weight: 20.0
+    kwargs:
+      goal:         1.0
+      concede:     -1.0
+      shot:         0.2
+      save:         0.5
+      demo:         0.3
+      boost_pickup: 0.5

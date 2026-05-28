@@ -1,0 +1,72 @@
+# ============================================================================
+# CURRICULUM STAGE 4 of 4 — "Polish"  (Diamond+: aggression, realism, let it cook)
+# ============================================================================
+# This is the BIG run — the bulk of the ~1B-step budget lives here. The bot
+# already has the fundamentals; now we refine and remove training wheels
+# (guide → Later Stages):
+#   - aggression_bias = 0.2: the concede penalty is only 80% of the goal reward
+#     (concede: -0.8). The guide's single most general anti-passiveness lever —
+#     it nudges the bot to fight to score instead of always playing safe.
+#   - Shaping rewards shrunk to a minimum: by now they should mostly be insurance.
+#     velocity_ball_to_goal + the event reward carry the learning.
+#   - Game-realistic spawns: 70% random / 30% kickoff (matches week-3 of the
+#     roadmap — shift state-setter mix toward realistic spawns).
+#   - Lowest LR + lower entropy → exploit and sharpen rather than explore.
+#
+# Warm-starts from Stage 3. Cumulative budget 1.2B — "over 1 billion or so".
+# Let it run. The guide: patience is required; flat graphs often mean it's
+# improving at everything at once rather than changing how it plays.
+extends: ./exp_006_mechanics.yaml
+
+experiment_name: exp_007_polish
+
+state_setter:
+  name: weighted_sample      # needs rlgym-tools (same as exp_003)
+  components:
+    - name: random
+      weight: 0.7
+      ball_rand_speed: true
+      cars_rand_speed: true
+      cars_on_ground: false
+    - name: default          # kickoffs — learn the real start of a point
+      weight: 0.3
+
+rewards:
+  zero_sum: true
+  team_spirit: 0.0           # 1v1 — never share reward
+  opp_scale: 1.0
+  components:
+    - name: speed_toward_ball   # minimal — basically learned
+      weight: 0.1
+    - name: velocity_ball_to_goal
+      weight: 1.0
+    - name: strong_touch
+      weight: 1.0
+    - name: air_touch
+      weight: 1.0
+    - name: save_boost
+      weight: 0.5
+    - name: event
+      weight: 20.0
+      kwargs:
+        goal:         1.0
+        concede:     -0.8       # aggression_bias = 0.2  (concede = -goal*(1-bias))
+        shot:         0.2
+        save:         0.5
+        demo:         0.35
+        boost_pickup: 0.5
+
+learner:
+  policy_lr: 0.8e-4          # guide: ~0.8e-4 (or lower) for outplay-mechanic stages
+  critic_lr: 0.8e-4
+  ppo_ent_coef: 0.008        # slightly more exploitative late-stage
+  ts_per_iteration: 300_000  # large batches for stable late-stage learning
+  ppo_batch_size: 300_000
+  ppo_minibatch_size: 50_000
+  exp_buffer_size: 600_000
+  save_every_ts: 10_000_000
+  init_from: exp_006_mechanics
+  timestep_limit: 1_200_000_000
+
+logging:
+  wandb_group: exp_007_polish

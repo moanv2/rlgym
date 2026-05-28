@@ -12,7 +12,8 @@ python -m rlbot.training.train --config configs/experiments/exp_001_baseline.yam
 
 A run produces:
 
-- `checkpoints/<experiment_name>/run_metadata.json` — config snapshot + git SHA
+- `logs/<experiment_name>.run_metadata.json` — config snapshot + git SHA (kept out
+  of the checkpoint folder so rlgym_ppo's checkpoint saver doesn't choke on it)
 - `checkpoints/<experiment_name>/<timestep>/` — periodic policy snapshots
 - `logs/<experiment_name>.log` — local log file
 - a wandb run in project `rlgym-finalproject`, group `<experiment_name>`
@@ -21,6 +22,40 @@ A run produces:
 
 rlgym-ppo's `Learner` auto-resumes if it finds a checkpoint in
 `checkpoints_save_folder`. Just rerun the same command.
+
+## Curriculum chaining
+
+The reward-shaping curriculum (`exp_004_chase` → `exp_007_polish`, see
+[reward_curriculum.md](reward_curriculum.md)) carries **one** policy across stages by
+warm-starting. A stage opts in with:
+
+```yaml
+learner:
+  init_from: exp_004_chase     # previous stage's experiment_name
+  add_unix_timestamp: false    # required so the previous stage's checkpoints are findable
+```
+
+On launch, `train.py` warm-starts from `init_from`'s latest checkpoint **only if this
+stage has no checkpoints of its own** — so re-launching mid-stage resumes normally.
+Because warm-starting carries over the agent's step counter, each stage's
+`timestep_limit` is a **cumulative** budget across the chain, not a per-stage count.
+
+A warm-started stage starts a **fresh wandb run** (it doesn't resume the previous
+stage's run). Train the stages in order; launching a stage before its `init_from`
+stage has any checkpoint raises a clear error.
+
+## Learning rate
+
+`learner.policy_lr` / `learner.critic_lr` are now wired through to the `Learner`
+(default `3e-4` if unset). The curriculum lowers LR as the bot matures
+(`2e-4 → 1e-4 → 0.8e-4`), per the guide. If KL divergence spikes, lower LR.
+
+## Keeping the machine awake
+
+Training inhibits system sleep for the duration of the run (Windows
+`SetThreadExecutionState`, macOS `caffeinate`, Linux `systemd-inhibit`) so a
+multi-day run doesn't die when the machine idles. Pass `--no-keep-awake` to disable.
+The display is allowed to turn off; only system sleep is blocked.
 
 ## Stopping
 

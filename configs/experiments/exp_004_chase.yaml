@@ -1,0 +1,91 @@
+# ============================================================================
+# CURRICULUM STAGE 1 of 4 — "Chase"  (Bronze–Silver: learn to touch the ball)
+# ============================================================================
+# Goal: a fresh (random) policy that reliably drives at the ball, hits it, and
+# keeps using its jump. The guide is explicit that goal rewards *before* the bot can
+# hit the ball just add noise ("making a good bot" → Early Stages).
+#
+# DEVIATION (this run): an earlier run learned to chase but then FARMED the flat touch
+# reward — circling with the ball and trading touches back and forth, never scoring.
+# The rewards here are restructured to fix that:
+#   - strong_touch replaces the flat touch reward: it pays for real strikes (change in
+#     ball speed) and ~0 for gentle circle-dribble taps, so touch-farming stops paying.
+#   - velocity_ball_to_goal is the dominant DENSE signal (above speed_toward_ball): the
+#     bot earns more for advancing the ball net-ward than for merely approaching it.
+#   - a tiny flat-touch event is kept ONLY as a from-scratch cold-start bootstrap.
+#   - jump shaping (in_air, double_jump) stays up so the bot keeps using both jumps.
+#   - modest scoring + boost-economy events are pulled forward from phases 5–6.
+# Concede / zero-sum still arrive properly in exp_005. Advance on behavior (reliable
+# strikes that send the ball net-ward, still jumping) — not on hitting the step ceiling.
+#
+# This is the ONLY stage that trains from scratch. Stages 2-4 warm-start from the
+# previous stage via `learner.init_from`, so obs / action / arch are LOCKED for the
+# whole curriculum (changing any of them invalidates the carried-over network).
+#   obs=advanced, action=lookup, arch=large  →  fixed across exp_004…exp_007.
+#
+# Run:  python -m rlbot.training.train --config configs/experiments/exp_004_chase.yaml
+extends: ../default.yaml
+
+experiment_name: exp_004_chase
+
+obs:
+  name: advanced          # LOCKED for the curriculum (do not change between stages)
+
+action:
+  name: lookup            # LOCKED
+
+state_setter:
+  name: random
+  ball_rand_speed: true
+  cars_rand_speed: true
+  cars_on_ground: false   # spawns airborne half the time → early air-control practice
+
+rewards:
+  # Shaping stays NOT zero-sum: it's individual gameplay tuning, and the new scoring
+  # events here are a positive nudge only (no concede penalty) — zero-sum scoring
+  # arrives in exp_005 (guide → zero-sum).
+  zero_sum: false
+  components:
+    - name: speed_toward_ball   # dense pull toward the ball; bootstraps a fresh policy
+      weight: 7.0               # to make contact, then decays to 0 once it's at the ball
+    - name: face_ball           # minor: don't approach the ball backwards
+      weight: 1.5
+    - name: in_air              # jumping / air time — keep the (first) jump alive so the
+      weight: 1.5               # bot doesn't forget how to jump (guide: raise if it does)
+    - name: double_jump         # reward spending the *second* jump (dodge / double jump)
+      weight: 1.25               # so the bot stops bypassing it — gateway to aerials
+    - name: save_boost          # sqrt(boost) — value keeping boost over running empty
+      weight: 0.5
+    - name: velocity_ball_to_goal  # dominant DENSE signal: drive the ball net-ward, not
+      weight: 15.0                 # just at the ball (kept above speed_toward_ball)
+    - name: strong_touch        # touch scaled by change in ball speed: real strikes pay,
+      weight: 10.0               # gentle circle-dribble taps earn ~0 (anti touch-farm)
+    - name: event               # tiny flat-touch BOOTSTRAP: a small fixed nudge for any
+      weight: 2.0               # contact, to de-risk the from-scratch cold start
+      kwargs:
+        touch: 1.0              # +2 / touch — deliberately small vs strong_touch (up to +8)
+    - name: event               # modest scoring + boost-collection events, separate bus
+      weight: 25.0
+      kwargs:
+        goal:         1.0       # +25 / goal — modest on purpose (giant goal rewards kill exploration)
+        shot:         0.4       # +10  / shot on net
+        boost_pickup: 0.1      # +3 / full pad — collect boost without roaming off-ball for it
+
+learner:
+  arch: large               # LOCKED across the curriculum (1024,1024,1024)
+  policy_lr: 2.0e-4         # guide: ~2e-4 for a bot that can't score yet
+  critic_lr: 2.0e-4
+  ppo_ent_coef: 0.01        # guide's "golden" exploration value
+  ppo_epochs: 3
+  ts_per_iteration: 50_000  # small batches are fine in early learning
+  ppo_batch_size: 50_000
+  ppo_minibatch_size: 25_000
+  exp_buffer_size: 150_000
+  save_every_ts: 10_000_000
+  n_checkpoints_to_keep: 25
+  add_unix_timestamp: false # stable checkpoint paths so the next stage can find them
+  timestep_limit: 100_000_000   # CUMULATIVE ceiling — move on once it reliably strikes
+                                # the ball net-ward (and still jumps); don't marinate here
+
+logging:
+  wandb_group: exp_004_chase

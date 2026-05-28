@@ -11,3 +11,22 @@ learner:
 
 logging:
   wandb_group: exp_001_baseline
+
+rewards:
+  zero_sum: true
+  team_spirit: 0.0
+  opp_scale: 1.0
+  components:
+    - name: velocity_player_to_ball
+      weight: 0.10
+    - name: face_ball
+      weight: 0.05
+    - name: velocity_ball_to_goal
+      weight: 0.30
+    - name: event
+      weight: 8.0
+      kwargs:
+        goal: 1.0
+        concede: -1.0
+        shot: 0.1
+        demo: 0.1

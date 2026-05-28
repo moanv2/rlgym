@@ -1,0 +1,86 @@
+# ============================================================================
+# CURRICULUM STAGE 2 of 4 — "Score & control"  (Bronze–Silver → Gold)
+# ============================================================================
+# Goal: take the trained chase/aerial bot from exp_004 and turn it into one that
+# actually SCORES (and DEFENDS — concede is now a real penalty), while cleaning
+# up clumsy low-speed play next to the ball. Warm-starts from exp_004's policy
+# via `learner.init_from`; obs/action/arch stay LOCKED across the curriculum.
+#
+# Changes from exp_004:
+#   - zero_sum: true + concede −1.0 → scoring is naturally adversarial now; the
+#     bot gets a real gradient for *defense* (penalty when opponent scores).
+#   - Scoring event DRASTICALLY larger (weight 80 → goal +80 / concede −80):
+#     makes the goal the dominant objective vs. the dense shaping.
+#   - double_jump down 1.25 → 0.4 — the bot was spamming flips for the flat
+#     per-jump payout; now flips earn their value INDIRECTLY via speed_toward_ball
+#     (a flip toward the ball nets more "approaching" reward).
+#   - speed_toward_ball stays strong (5.0) so flips stay instrumental.
+#   - velocity_ball_to_goal eased 15 → 5 — still a dense path; goal event leads.
+#   - align_ball_goal added (1.0): per-step positioning nudge — approach the ball
+#     from the goal-side. Directly targets clumsy near-ball play.
+#   - flat-touch bootstrap removed (warm-start ≠ cold start); strong_touch alone.
+#   - State-setter MIX: 50% random / 30% kickoff / 20% near_ball — the near_ball
+#     drill gives direct reps in the situation the bot is currently weak at.
+#   - LR eased to 1.5e-4 + bigger batches (guide → middle stages).
+#
+# Run:  python -m rlbot.training.train --config configs/experiments/exp_005_score.yaml
+extends: ./exp_004_chase.yaml
+
+experiment_name: exp_005_score
+
+state_setter:
+  name: weighted_sample
+  components:
+    - name: random
+      weight: 0.5
+      ball_rand_speed: true
+      cars_rand_speed: true
+      cars_on_ground: false       # half airborne — keep air-control practice
+    - name: default               # kickoffs — learn the real start of a point
+      weight: 0.3
+    - name: near_ball             # NEW: low-speed near-ball control drill
+      weight: 0.2
+
+rewards:
+  zero_sum: true
+  team_spirit: 0.0                # 1v1 — never share reward with the "team"
+  opp_scale: 1.0
+  components:
+    - name: speed_toward_ball     # still strong: makes flips instrumental for chase
+      weight: 5.0
+    - name: face_ball
+      weight: 0.5
+    - name: in_air                # insurance — jump habit is established now
+      weight: 0.5
+    - name: double_jump           # DOWN from 1.25: was spammed for flat payout; flips
+      weight: 0.4                 # now earn their value via speed_toward_ball instead
+    - name: save_boost            # sqrt(boost) — don't run empty
+      weight: 0.3
+    - name: velocity_ball_to_goal # dense path to goal; goal event now leads
+      weight: 5.0
+    - name: strong_touch          # touch scaled by Δ|ball_vel| — real strikes pay
+      weight: 5.0
+    - name: align_ball_goal       # NEW: per-step positioning — approach from goal-side
+      weight: 1.0
+    - name: event                 # DRASTICALLY larger scoring + defense events
+      weight: 80.0
+      kwargs:
+        goal:         1.0         # +80 / goal — the dominant sparse signal
+        concede:     -1.0         # −80 / concede — defense is real now
+        shot:         0.3         # +24 / shot on net
+        save:         0.5         # +40 / save — positive credit for defending
+        boost_pickup: 0.1         # +8 / full pad — grab boost without roaming for it
+
+learner:
+  policy_lr: 1.5e-4               # guide: ease down once scoring is in play
+  critic_lr: 1.5e-4
+  ts_per_iteration: 100_000       # bigger batches now that play is non-trivial
+  ppo_batch_size: 100_000
+  ppo_minibatch_size: 25_000
+  exp_buffer_size: 300_000
+  save_every_ts: 10_000_000
+  init_from: exp_004_chase        # warm-start the trained chase/aerial policy
+  timestep_limit: 250_000_000     # CUMULATIVE — ~150M new on top of exp_004's 100M
+
+logging:
+  wandb_group: exp_005_score
