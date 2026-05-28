@@ -164,7 +164,9 @@ def build_env():
 
     from rlbot.rewards.custom_rl import (
         AerialBallReward,
+        AerialTouchReward,
         BackboardDefenseReward,
+        BallAwayFromOwnGoalReward,
         BigBoostProximityReward,
         SupersonicReward,
     )
@@ -175,20 +177,35 @@ def build_env():
     # additional components alongside it and wrap the whole thing once at the end.
     nexto_base = build_nexto_style_reward(zero_sum=False)
 
+    # Tuned reward stack (v2). Changes from the original nexto_plus_kickoff_512
+    # reward set, based on watching the 202M bot play:
+    #   - AerialTouchReward (NEW, weight 1.5): rewards ACTUAL aerial ball
+    #     contact, not just being airborne. Diego wanted stronger aerial play.
+    #   - BigBoostProximityReward (now ball-distance aware, weight bumped
+    #     0.3 → 0.5): only rewards grabbing a big pad when the ball is far,
+    #     so the bot does not abandon plays to chase boost. Diego wanted more
+    #     boost reward but conditioned on ball distance.
+    #   - BallAwayFromOwnGoalReward (NEW, weight 0.6): penalizes the ball
+    #     heading toward the bot's own net in its defensive half — directly
+    #     attacks the own-goal-under-pressure behavior seen vs Marian's bot.
     combined = CombinedReward(
         reward_functions=(
-            nexto_base,                  # whole 10-component Nexto stack as one unit
+            nexto_base,                   # whole 10-component Nexto stack as one unit
             SupersonicReward(),
             AerialBallReward(),
-            BigBoostProximityReward(),
+            AerialTouchReward(),          # NEW — real aerial contact
+            BigBoostProximityReward(),    # MODIFIED — ball-distance aware
             BackboardDefenseReward(),
+            BallAwayFromOwnGoalReward(),  # NEW — anti-own-goal
         ),
         reward_weights=(
             1.0,    # nexto base counts as 1x (already weighted internally to ~12 max)
             0.05,   # supersonic: cheap, fires often when boosting hard
-            0.5,    # aerial: sparse but valuable when it fires
-            0.3,    # big-boost proximity: only fires when low on boost
+            0.5,    # aerial position: sparse but valuable when it fires
+            1.5,    # aerial TOUCH: strong reward for actual aerial hits
+            0.5,    # big-boost proximity: ball-distance aware, bumped from 0.3
             0.4,    # backboard defense: only fires in defensive scenarios
+            0.6,    # ball-away-from-own-goal: anti own-goal under pressure
         ),
     )
     reward_fn = ZeroSumReward(combined, team_spirit=0.0, opp_scale=1.0)
@@ -326,12 +343,14 @@ def _capture_config() -> dict:
     """
     return {
         "experiment_name": EXPERIMENT_NAME,
-        "n_proc": 14,
+        # we changing to 16 as we have 24 logical processors used to be 14
+        "n_proc": 16,
         "ppo_batch_size": 100_000,
         "ts_per_iteration": 100_000,
         "ppo_minibatch_size": 100_000,
         "exp_buffer_size": 300_000,
-        "min_inference_size": 140,
+        # changing here to 180 used to be 140 
+        "min_inference_size": 180,
         "ppo_epochs": 2,
         "ppo_ent_coef": 0.01,
         "policy_layer_sizes": [512, 512, 512],
@@ -344,10 +363,13 @@ def _capture_config() -> dict:
             "nexto_base (10-component Nexto-style, weight 1.0)",
             "SupersonicReward (weight 0.05)",
             "AerialBallReward (weight 0.5)",
-            "BigBoostProximityReward (weight 0.3)",
+            "AerialTouchReward (weight 1.5) [v2: real aerial contact]",
+            "BigBoostProximityReward (weight 0.5) [v2: ball-distance aware]",
             "BackboardDefenseReward (weight 0.4)",
+            "BallAwayFromOwnGoalReward (weight 0.6) [v2: anti own-goal]",
             "ZeroSumReward wrapping (team_spirit=0, opp_scale=1)",
         ],
+        "reward_version": "v2 (tuned after 202M: +aerial touch, ball-distance boost, anti-own-goal)",
         "nexto_base_components": [
             "VelocityPlayerToBallReward (weight 0.6)",
             "LiuDistancePlayerToBallReward (weight 0.7)",
@@ -554,14 +576,16 @@ if __name__ == "__main__":
         # Diego's machine has 12 physical / 24 logical cores, so 14 leaves
         # plenty of headroom for OS / browser / training side-tools.
         # Was 8 — bumped to 14 to push Overall Steps/sec from ~7k toward 12k+.
-        n_proc=14,
+        n_proc=16,
 
         # The Learner batches inference requests across workers for GPU
         # efficiency. min_inference_size says: do not run the policy
         # forward pass until at least this many env steps are queued up.
         # Bumped from 80 → 140 to match the higher n_proc — larger GPU
         # batches per forward pass = better GPU utilization.
-        min_inference_size=140,
+
+        # now bumped to 180 due to my GPU being better (rtx 4070)
+        min_inference_size=180,
 
         # Optional callback for per iteration metrics. None means default
         # console reporting only.
