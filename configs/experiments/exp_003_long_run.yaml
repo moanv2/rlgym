@@ -24,8 +24,12 @@ rewards:
       weight: 0.01
     - name: face_ball
       weight: 0.02
+    - name: supersonic
+      weight: 0.02
+    - name: in_air
+      weight: 0.002
     - name: velocity_ball_to_goal
-      weight: 0.8
+      weight: 0.5
     - name: touch_ball
       weight: 0.02
     - name: event
@@ -36,12 +40,13 @@ rewards:
         shot: 0.4
         save: 0.4
         demo: 0.05
+        boost_pickup: 0.01
 
 learner:
   arch: medium
   timestep_limit: 2_000_000_000
   save_every_ts: 5_000_000
-  ppo_ent_coef: 0.001
+  ppo_ent_coef: 0.002
 
 logging:
   wandb_group: exp_003_long_run
