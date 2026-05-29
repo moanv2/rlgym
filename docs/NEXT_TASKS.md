@@ -10,6 +10,33 @@ quality; task 3 is about reaching that compute scale.
 
 ---
 
+## FIELD OBSERVATIONS — 635M champion (2026-05-29)
+
+Diego watched the 635M bot (65% win rate vs Marian's 1.35B) in rlviser and noted these
+behaviors. They drive Tasks 4-6 below. Recording them verbatim with Diego's gamesense so
+the next session understands the *why*, not just the *what*.
+
+1. **Not collecting boost — especially the big 100-boost pads.** Diego's gamesense:
+   Rocket League is a high-paced game. Pros maintain high speed constantly so they can
+   rotate back to their own net for defense the instant the ball is cleared. A car that
+   reaches high speed *keeps* that momentum without boost (RL physics: momentum carries;
+   natural no-boost cap is 1410 uu/s, but flips/momentum preserve speed up toward
+   supersonic 2200). The bot currently drives around at low pace and ignores big pads.
+   **Want: higher reward for grabbing pads (esp. big 100 pads) AND higher reward for
+   maintaining speed.** The car's velocity is available at `player.car_data.linear_velocity`
+   (a 3-vector); its magnitude is current speed. → **Task 4.**
+
+2. **Kickoffs are AMAZING — a major source of goals.** Keep this up; do not regress it.
+   The specific remaining want is to implement **"fast kickoff" (speedflip) logic** so the
+   bot reaches the ball even faster off kickoff. REMIND DIEGO to implement fast-kickoff
+   logic — it was the source of many goals and is a clear strength to push further. → **Task 2 (expanded).**
+
+3. **Shooting is good but sometimes excessive** — the bot shoots when it could wait, set
+   up, and take a better shot. Diego doesn't know how to tune this. It's a subtle shot-
+   selection / patience problem. Noted as an open problem with candidate approaches. → **Task 6.**
+
+---
+
 ## Task 1 — Dribbling-toward-enemy-goal reward (HIGH priority, easy)
 
 **Problem Diego observed (watching 416M bot in rlviser):** dribbling has improved
@@ -69,9 +96,27 @@ policy is preserved; it's a fine-tune. Validate with the progression eval after 
 
 ---
 
-## Task 2 — Kickoff logic (MEDIUM priority)
+## Task 2 — Kickoff logic + FAST KICKOFF (MEDIUM-HIGH — kickoffs are a proven strength)
 
-Diego wants kickoff-specific behavior. Two complementary pieces:
+**IMPORTANT REMINDER FOR DIEGO: implement the FAST KICKOFF (speedflip) logic.** Per the
+635M field observations, kickoffs are already AMAZING and a major source of goals — this
+is a strength to push, not fix. The specific want is a faster kickoff approach.
+
+Two ways to get a faster kickoff, pick based on effort budget:
+
+- **(A) Learned via reward (easier, lower ceiling):** the `KickoffReward` sketch below +
+  more kickoff scenario weight already pushes the bot to commit hard off kickoff. The bot
+  learned good kickoffs this way. Bumping kickoff reward/scenario weight pushes speed further.
+- **(B) Scripted speedflip (harder, higher ceiling):** the "fast kickoff" pros use is a
+  precise input sequence (diagonal flip → cancel → boost) that reaches the ball in the
+  theoretical minimum time. This is HARDCODED, not learned — you'd intercept the action at
+  kickoff and replay a fixed input sequence for the first ~0.7s, then hand control back to
+  the policy. This is the genuinely "fast kickoff" Diego means. It's complex (frame-perfect
+  input timing at tick_skip=8) and is a separate sub-project. Flag it, scope it, get Diego's
+  go-ahead before building — it may not be worth it given the learned kickoffs are already
+  winning games.
+
+Diego also wants kickoff-specific reward behavior. Two complementary pieces:
 
 **2a. KickoffReward** — reward winning the kickoff (getting first touch / pushing the ball
 toward enemy half right after a kickoff). New class in `custom_rl.py`. Sketch:
@@ -137,13 +182,82 @@ Instead, the clean path to billions:
 
 ---
 
+## Task 4 — Boost collection + speed maintenance (HIGH priority — from 635M observations)
+
+**Problem:** the bot ignores boost pads (especially the big 100 pads) and drives at low
+pace. Diego's gamesense: pros maintain high speed so they can rotate back to defend the
+instant the ball is cleared. Speed = the ability to be everywhere in time. The bot needs
+to value (a) grabbing boost and (b) keeping its velocity high.
+
+Two reward changes in `simple_bot.py` build_env + `custom_rl.py`:
+
+**4a. Bump boost-seeking.** `BigBoostProximityReward` is already ball-distance aware. Two
+moves:
+- Bump its weight 0.5 → ~0.8 in the CombinedReward.
+- Consider raising its `LOW_BOOST_THRESHOLD` from 0.30 → ~0.40 so the bot tops up *before*
+  it's nearly empty (pros refill proactively, not reactively).
+- Also `EventReward` already has `boost_pickup` (currently 0.3 inside nexto_style) — bump it
+  to ~0.5-0.8 so each pickup is a clear positive event. (Edit `nexto_style.py`'s EventReward.)
+
+**4b. Add a continuous speed-maintenance reward.** rlgym_sim ships `VelocityReward` which
+rewards raw car speed proportionally (not the binary supersonic threshold `SupersonicReward`
+uses). Add it so the bot is rewarded for *keeping* pace, not just briefly hitting supersonic:
+
+```python
+from rlgym_sim.utils.reward_functions.common_rewards import VelocityReward
+# in the CombinedReward:
+VelocityReward(negative=False),   # weight ~0.1 — continuous "keep moving fast" nudge
+```
+
+The car's speed is `np.linalg.norm(player.car_data.linear_velocity)`. If you want a custom
+version (e.g. only reward speed above the no-boost cap of 1410, or only when not near the
+ball), write a `MaintainSpeedReward` in custom_rl.py referencing `CAR_MAX_SPEED_NO_BOOST`
+and `CAR_SUPERSONIC_THRESHOLD` from `rl_constants.py`. But start with the built-in
+`VelocityReward` at low weight — simplest, and tune from there.
+
+Also consider bumping `SupersonicReward` weight 0.05 → 0.1.
+
+**Watch for over-tuning:** too much speed reward → the bot zooms around pointlessly
+ignoring the ball. Keep speed/boost weights modest relative to the ball/goal rewards.
+Validate with the progression eval and by watching in rlviser (is it rotating faster and
+grabbing pads, without abandoning plays?).
+
+---
+
+## Task 5 — Shot-selection / patience (OPEN PROBLEM — from 635M observations)
+
+**Problem:** the bot shoots too eagerly — it shoots when it could wait, set up, and take a
+better shot. Diego doesn't know how to tune this, and honestly it's a genuinely hard,
+subtle behavioral problem. Candidate approaches, none guaranteed — experiment:
+
+1. **Reward shot QUALITY, not just shots.** Right now `EventReward(shot=...)` rewards any
+   shot on target equally. Consider a custom reward that scales shot reward by shot quality
+   — e.g. ball speed toward goal at the moment of the shot, or proximity to goal, or angle.
+   A weak pot-shot from midfield gets less than a close, fast, well-angled shot. This
+   discourages spamming low-quality shots.
+2. **Reward possession/setup.** A small reward for keeping the ball on the bot's side of a
+   contest (control) before shooting could encourage patience. Risk: rewards passivity.
+3. **Reduce the `shot` weight.** Crude, but if shots are over-incentivized, lowering
+   `EventReward(shot=)` makes the bot shoot only when it really pays off (goals still
+   rewarded heavily). Try halving it first as a cheap experiment.
+4. **Accept it.** Honestly, "shoots a bit too much" is a minor flaw for a bot that wins 65%
+   vs a 1.35B opponent. May not be worth the tuning risk before the final. Low priority
+   relative to Tasks 1 and 4.
+
+No clean solution — flag to Diego that this is exploratory. Start with option 3 (cheap)
+or 1 (most principled) and measure via win rate + rlviser observation.
+
+---
+
 ## Task ordering recommendation
 
-1. **Task 1 (dribbling)** first — quick, high-impact, fixes a behavior Diego saw failing.
-2. **Task 2 (kickoff)** — quick, complements task 1.
-3. Train the combined task-1+2 reward set to ~600M on the laptop, eval vs Marian + vs the
-   416M champion to confirm improvement.
-4. **Task 3 (cloud)** only once Diego commits to the billions-scale push and the spend.
+1. **Task 1 (dribbling)** — quick, high-impact, fixes dribbling-into-walls.
+2. **Task 4 (boost + speed)** — high-impact, directly from Diego's strongest gamesense note.
+3. **Task 2 (kickoff reward bump; fast-kickoff is a separate scoped sub-project)** — kickoffs
+   already great, light touch to push further. Get go-ahead before the scripted speedflip.
+4. Train the combined reward set to ~800M-1B on the laptop, eval vs Marian + the 635M champion.
+5. **Task 5 (shot patience)** — only if there's time; exploratory, low priority.
+6. **Task 3 (cloud billions)** — only once Diego commits to the spend.
 
 ## Always, after any reward/code change
 
