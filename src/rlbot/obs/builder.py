@@ -14,14 +14,11 @@ def build_obs(config: dict[str, Any]):
         return DefaultObs()
 
     if name == "advanced":
-        # rlgym_tools.advanced_obs is a more feature-rich obs (relative positions, etc.)
-        try:
-            from rlgym_tools.extra_obs.advanced_obs import AdvancedObs
+        # rlgym_sim ships its own AdvancedObs (relative positions/velocities). The old
+        # rlgym_tools.extra_obs path was removed in rlgym-tools v2, so import it from
+        # rlgym_sim directly — same source as DefaultObs above.
+        from rlgym_sim.utils.obs_builders import AdvancedObs
 
-            return AdvancedObs()
-        except ImportError as e:
-            raise ImportError(
-                "obs.name='advanced' requires rlgym-tools. pip install -r requirements.txt"
-            ) from e
+        return AdvancedObs()
 
     raise ValueError(f"Unknown obs builder: {name!r}")
