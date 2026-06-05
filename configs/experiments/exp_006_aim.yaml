@@ -24,22 +24,22 @@
 #   - LR eased to 1.5e-4 + bigger batches (guide → middle stages).
 #
 # Run:  python -m rlbot.training.train --config configs/experiments/exp_005_score.yaml
-extends: ./exp_004_chase.yaml
+extends: ./exp_005_score.yaml
 
-experiment_name: exp_005_score
+experiment_name: exp_006_aim
 
 state_setter:
   name: weighted_sample
   components:
     - name: random
-      weight: 0.5
+      weight: 0.6
       ball_rand_speed: true
       cars_rand_speed: true
       cars_on_ground: false       # half airborne — keep air-control practice
     - name: default               # kickoffs — learn the real start of a point
       weight: 0.3
     - name: near_ball             # NEW: low-speed near-ball control drill
-      weight: 0.2
+      weight: 0.1
 
 rewards:
   zero_sum: true
@@ -47,17 +47,17 @@ rewards:
   opp_scale: 1.0
   components:
     - name: speed_toward_ball     # still strong: makes flips instrumental for chase
-      weight: 5.0
+      weight: 6.0
     - name: face_ball
       weight: 0.5
     - name: in_air                # insurance — jump habit is established now
-      weight: 0.5
+      weight: 0.75
     - name: double_jump           # DOWN from 1.25: was spammed for flat payout; flips
       weight: 0.4                 # now earn their value via speed_toward_ball instead
     - name: save_boost            # sqrt(boost) — don't run empty
       weight: 0.4
     - name: velocity_ball_to_goal # dense path to goal; goal event now leads
-      weight: 8.0
+      weight: 10.0
     - name: strong_touch          # touch scaled by Δ|ball_vel| — real strikes pay
       weight: 5.0
     - name: align_ball_goal       # NEW: per-step positioning — approach from goal-side
@@ -65,9 +65,9 @@ rewards:
     - name: event                 # DRASTICALLY larger scoring + defense events
       weight: 80.0
       kwargs:
-        goal:         1.0         # +80 / goal — the dominant sparse signal
+        goal:         1.5         # +80 / goal — the dominant sparse signal
         concede:     -1.0         # −80 / concede — defense is real now
-        shot:         0.3         # +24 / shot on net
+        shot:         0.75         # +24 / shot on net
         save:         0.5         # +40 / save — positive credit for defending
         boost_pickup: 0.15         # +12 full pad when empty — grab boost when convenient without roaming for it
 
@@ -79,8 +79,8 @@ learner:
   ppo_minibatch_size: 25_000
   exp_buffer_size: 300_000
   save_every_ts: 10_000_000
-  init_from: exp_004_chase        # warm-start the trained chase/aerial policy
-  timestep_limit: 400_000_000     # CUMULATIVE — ~150M new on top of exp_004's 100M
+  init_from: exp_005_score        # warm-start the trained chase/aerial policy
+  timestep_limit: 500_000_000     # CUMULATIVE — ~150M new on top of exp_004's 100M
 
 logging:
-  wandb_group: exp_005_score
+  wandb_group: exp_006_aim

@@ -30,7 +30,15 @@ from rlbot.rewards.registry import REWARDS
 try:
     import numpy as np
     from rlgym_sim.utils import RewardFunction
-    from rlgym_sim.utils.common_values import BALL_MAX_SPEED, CAR_MAX_SPEED, CEILING_Z
+    from rlgym_sim.utils.common_values import (
+        BACK_WALL_Y,
+        BALL_MAX_SPEED,
+        BLUE_GOAL_BACK,
+        BLUE_TEAM,
+        CAR_MAX_SPEED,
+        CEILING_Z,
+        ORANGE_GOAL_BACK,
+    )
     from rlgym_sim.utils.gamestates import GameState, PlayerData
 except ImportError:
     pass
@@ -189,3 +197,65 @@ else:
             air_frac = min(air_time, self.max_time) / self.max_time
             height_frac = min(float(state.ball.position[2]) / CEILING_Z, 1.0)
             return min(air_frac, height_frac)
+
+    @REWARDS.register("shot_toward_goal")
+    class ShotTowardGoalReward(RewardFunction):
+        """Reward a touch by how much goalward speed it adds, weighted by distance.
+
+        This is the *directional* cousin of ``strong_touch``: instead of rewarding any
+        change in ball speed, it rewards only the component of the velocity change that
+        points at the opponent's net — ``dot(Δball_vel, dir_to_goal)``. A powerful shot
+        sent straight at the net earns ~1; an equally powerful clear sideways or backward
+        earns ~0. That fixes the gap ``strong_touch`` leaves open: a bot can max out a
+        flat power reward by smacking the ball *anywhere*, which is exactly the aimless
+        long-range play we're trying to cure.
+
+        ``dist_frac`` (clamped distance from the ball to the goal over ``BACK_WALL_Y``)
+        scales the reward up the farther the strike originates, so the signal concentrates
+        on the weakness — aiming *from afar*. Point-blank finishing is left to the sparse
+        ``event.goal`` reward, not double-counted here.
+
+        Not farmable: you cannot gain reward without genuinely accelerating the ball
+        toward the net, and once it's moving fast goalward there's little Δv left to add.
+
+        Like ``StrongTouchReward`` it tracks the previous step's ball velocity internally
+        and advances it only once every player has been scored for the step, so both cars
+        in a 1v1 compare against the same genuine prior-step velocity (see module
+        docstring for the call contract).
+        """
+
+        def __init__(self, max_delta: float = float(BALL_MAX_SPEED), far_ref: float = float(BACK_WALL_Y)):
+            super().__init__()
+            self.max_delta = float(max_delta)
+            self.far_ref = float(far_ref)
+            self._prev_ball_vel = np.zeros(3, dtype=np.float32)
+            self._n_players = 1
+            self._seen = 0
+
+        def reset(self, initial_state: GameState) -> None:
+            self._prev_ball_vel = np.asarray(initial_state.ball.linear_velocity, dtype=np.float32)
+            self._n_players = max(len(initial_state.players), 1)
+            self._seen = 0
+
+        def get_reward(self, player: PlayerData, state: GameState, previous_action) -> float:
+            cur = np.asarray(state.ball.linear_velocity, dtype=np.float32)
+            reward = 0.0
+            if player.ball_touched:
+                objective = np.array(
+                    ORANGE_GOAL_BACK if player.team_num == BLUE_TEAM else BLUE_GOAL_BACK,
+                    dtype=np.float32,
+                )
+                to_goal = objective - np.asarray(state.ball.position, dtype=np.float32)
+                dist = float(np.linalg.norm(to_goal))
+                if dist > 1e-6:
+                    dir_to_goal = to_goal / dist
+                    gained = float(np.dot(cur - self._prev_ball_vel, dir_to_goal))
+                    if gained > 0.0:
+                        dist_frac = min(dist / self.far_ref, 1.0)
+                        reward = min(gained / self.max_delta, 1.0) * dist_frac
+            # Advance the shared "previous" velocity once the whole step has been scored.
+            self._seen += 1
+            if self._seen >= self._n_players:
+                self._prev_ball_vel = cur
+                self._seen = 0
+            return reward

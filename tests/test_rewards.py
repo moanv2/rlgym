@@ -10,13 +10,19 @@ import pytest
 
 pytest.importorskip("rlgym_sim")
 
-from rlgym_sim.utils.common_values import BALL_MAX_SPEED, CAR_MAX_SPEED, CEILING_Z
+from rlgym_sim.utils.common_values import (
+    BACK_WALL_Y,
+    BALL_MAX_SPEED,
+    CAR_MAX_SPEED,
+    CEILING_Z,
+)
 from rlgym_sim.utils.gamestates import GameState, PhysicsObject, PlayerData
 
 from rlbot.rewards.custom import (
     AirTouchReward,
     DoubleJumpReward,
     InAirReward,
+    ShotTowardGoalReward,
     SpeedTowardBallReward,
     StrongTouchReward,
 )
@@ -64,6 +70,7 @@ def test_curriculum_rewards_are_registered():
         "double_jump",
         "strong_touch",
         "air_touch",
+        "shot_toward_goal",
         "save_boost",
         "align_ball_goal",
     ):
@@ -232,3 +239,65 @@ def test_air_touch_gated_by_height():
     car.ball_touched = True
     # min(air_frac=1.0, height_frac=0.25) == 0.25
     assert r.get_reward(car, low_ball, None) == pytest.approx(0.25, abs=0.01)
+
+
+# --------------------------------------------------------------------------- #
+# ShotTowardGoalReward
+# --------------------------------------------------------------------------- #
+def test_shot_toward_goal_rewards_goalward_strike():
+    """Blue attacks +y; a touch that sends the ball at the net earns ~goalward Δspeed."""
+    r = ShotTowardGoalReward()
+    car = _player(team=0, ball_touched=True)
+    start = _state([car], ball_pos=(0, 0, 93), ball_vel=(0, 0, 0))
+    r.reset(start)
+    # From midfield (dist to goal > BACK_WALL_Y, so dist_frac == 1): a +y strike at
+    # half BALL_MAX_SPEED scores ~0.5 (minus a hair from the elevated goal-back).
+    hit = _state([car], ball_pos=(0, 0, 93), ball_vel=(0, BALL_MAX_SPEED / 2, 0))
+    assert r.get_reward(car, hit, None) == pytest.approx(0.498, abs=0.02)
+
+
+def test_shot_toward_goal_zero_when_struck_away_from_goal():
+    r = ShotTowardGoalReward()
+    car = _player(team=0, ball_touched=True)  # blue attacks +y
+    start = _state([car], ball_pos=(0, 0, 93), ball_vel=(0, 0, 0))
+    r.reset(start)
+    # Ball driven toward the bot's OWN net (-y) → no goalward gain → no reward.
+    away = _state([car], ball_pos=(0, 0, 93), ball_vel=(0, -BALL_MAX_SPEED / 2, 0))
+    assert r.get_reward(car, away, None) == 0.0
+
+
+def test_shot_toward_goal_zero_without_touch():
+    r = ShotTowardGoalReward()
+    car = _player(team=0, ball_touched=False)
+    start = _state([car], ball_pos=(0, 0, 93), ball_vel=(0, 0, 0))
+    r.reset(start)
+    moving = _state([car], ball_pos=(0, 0, 93), ball_vel=(0, BALL_MAX_SPEED, 0))
+    assert r.get_reward(car, moving, None) == 0.0  # only a touch earns reward
+
+
+def test_shot_toward_goal_distance_weighted():
+    """An identical strike from near the net is worth less than one from afar."""
+    far = ShotTowardGoalReward()
+    car = _player(team=0, ball_touched=True)
+    far.reset(_state([car], ball_pos=(0, 0, 93), ball_vel=(0, 0, 0)))
+    far_r = far.get_reward(
+        car, _state([car], ball_pos=(0, 0, 93), ball_vel=(0, BALL_MAX_SPEED / 2, 0)), None
+    )
+
+    near = ShotTowardGoalReward()
+    near.reset(_state([car], ball_pos=(0, BACK_WALL_Y - 620, 93), ball_vel=(0, 0, 0)))
+    near_r = near.get_reward(
+        car,
+        _state([car], ball_pos=(0, BACK_WALL_Y - 620, 93), ball_vel=(0, BALL_MAX_SPEED / 2, 0)),
+        None,
+    )
+    assert 0.0 < near_r < far_r
+
+
+def test_shot_toward_goal_respects_team_direction():
+    """Orange attacks -y; the same -y strike that earns nothing for blue scores here."""
+    r = ShotTowardGoalReward()
+    car = _player(team=1, ball_touched=True)
+    r.reset(_state([car], ball_pos=(0, 0, 93), ball_vel=(0, 0, 0)))
+    hit = _state([car], ball_pos=(0, 0, 93), ball_vel=(0, -BALL_MAX_SPEED / 2, 0))
+    assert r.get_reward(car, hit, None) == pytest.approx(0.498, abs=0.02)

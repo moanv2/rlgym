@@ -79,6 +79,73 @@ def _snapshot_run_metadata(cfg: Config) -> Path:
     return meta_path
 
 
+def _install_eta_reporter(timestep_limit: int, log, window: int = 10) -> None:
+    """Wrap rlgym_ppo's per-iteration reporter to add rolling step-time avg and ETA.
+
+    The Learner calls ``rlgym_ppo.util.reporting.report_metrics`` once per iteration
+    with the cumulative-timestep and wall-time fields already filled in. We intercept
+    that call, keep a rolling window of (cumulative_ts, wall_time) samples, derive an
+    average steps/sec + estimated time-to-``timestep_limit``, push the values into the
+    loggable dict so wandb picks them up, and emit a one-line console summary.
+    """
+    import time as _time
+    from collections import deque
+    from datetime import datetime, timedelta
+
+    from rlgym_ppo.util import reporting
+
+    orig_report = reporting.report_metrics
+    history: deque[tuple[int, float]] = deque(maxlen=max(2, window))
+
+    def wrapped(loggable_metrics, debug_metrics, wandb_run=None):
+        now = _time.time()
+        cum_ts = int(loggable_metrics.get("Cumulative Timesteps", 0))
+        iter_time = float(loggable_metrics.get("Total Iteration Time", 0.0))
+        history.append((cum_ts, now))
+
+        if len(history) >= 2:
+            ts_old, t_old = history[0]
+            dt = max(now - t_old, 1e-9)
+            d_ts = max(cum_ts - ts_old, 0)
+            avg_sps = d_ts / dt
+            avg_iter_time = dt / (len(history) - 1)
+        else:
+            avg_sps = float(loggable_metrics.get("Overall Steps per Second", 0.0))
+            avg_iter_time = iter_time
+
+        remaining = max(timestep_limit - cum_ts, 0)
+        eta_s = remaining / avg_sps if avg_sps > 0 else float("inf")
+        progress_pct = (100.0 * cum_ts / timestep_limit) if timestep_limit else 0.0
+
+        loggable_metrics["Avg Iteration Time (rolling)"] = float(avg_iter_time)
+        loggable_metrics["Avg Steps per Second (rolling)"] = float(avg_sps)
+        loggable_metrics["Progress Percent"] = float(progress_pct)
+        loggable_metrics["ETA Seconds"] = 0.0 if eta_s == float("inf") else float(eta_s)
+
+        if eta_s == float("inf"):
+            eta_str, finish_str = "inf", "n/a"
+        else:
+            eta_str = str(timedelta(seconds=int(eta_s)))
+            finish_str = (datetime.now() + timedelta(seconds=int(eta_s))).strftime("%Y-%m-%d %H:%M:%S")
+
+        # Let rlgym_ppo emit its own iteration block first, then print ours last so
+        # it stays at the bottom of the console (and goes to the log file via `log`).
+        result = orig_report(loggable_metrics, debug_metrics, wandb_run=wandb_run)
+
+        msg = (
+            f"Progress {cum_ts:,}/{timestep_limit:,} ({progress_pct:.2f}%)  "
+            f"avg iter={avg_iter_time:.2f}s ({int(avg_sps):,} sps over last {len(history)} iters)  "
+            f"ETA={eta_str}  finish~{finish_str}"
+        )
+        # `print` so it always lands on stdout next to rlgym_ppo's own prints;
+        # `log.info` so it also goes to the run's log file.
+        print(f">>> [ETA] {msg}", flush=True)
+        log.info(f"[cyan]{msg}[/]")
+        return result
+
+    reporting.report_metrics = wrapped
+
+
 def _install_kbhit_guard() -> None:
     """Make rlgym_ppo's keyboard poller crash-proof on Windows.
 
@@ -212,6 +279,12 @@ def train(cfg: Config, keep_system_awake: bool = True) -> None:
     log.info(f"[bold green]Starting training[/]: {cfg.experiment_name}  arch={arch}  "
              f"policy_lr={L.get('policy_lr', 3e-4)}  "
              f"timestep_limit={L.get('timestep_limit'):,}")
+
+    _install_eta_reporter(
+        timestep_limit=int(L.get("timestep_limit", 1_000_000_000)),
+        log=log,
+        window=int(log_cfg.get("eta_window", 10)),
+    )
 
     # Long runs span days — keep the machine from sleeping out from under us.
     if keep_system_awake:

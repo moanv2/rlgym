@@ -35,6 +35,14 @@ def build_state_setter(config: dict[str, Any]):
         kwargs = {k: v for k, v in config.items() if k not in {"name", "weight"}}
         return NearBallState(**kwargs)
 
+    if name == "shooting":
+        # Targeted long-range shooting drill — see shooting.py docstring.
+        from rlbot.state_setters.shooting import ShootingState
+
+        # Forward every config key except the dispatch-only ones as kwargs.
+        kwargs = {k: v for k, v in config.items() if k not in {"name", "weight"}}
+        return ShootingState(**kwargs)
+
     if name == "weighted_sample":
         # Mix multiple state setters with weights — useful for curriculum.
         # We use a local replacement for rlgym-tools' WeightedSampleSetter because

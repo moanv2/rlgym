@@ -1,0 +1,96 @@
+# ============================================================================
+# CURRICULUM STAGE — "Shooting"  (Gold: long-range aim on the net)
+# ============================================================================
+# exp_006_aim produced a mobile bot — great chase, recovery and air control —
+# but it strikes the ball aimlessly from distance: lots of power, little aim.
+# This run keeps the mobility and teaches it to AIM long shots at the net.
+# Warm-starts from exp_006_aim; obs/action/arch stay LOCKED across the curriculum.
+#
+# Root cause of the weakness:
+#   - strong_touch rewards a change in ball *speed* in ANY direction, so the bot
+#     maxes it out by smacking the ball hard wherever it's facing.
+#   - velocity_ball_to_goal is a weak gradient from afar: the goal subtends a tiny
+#     angle far away, so "roughly toward goal" and "dead on target" score almost
+#     the same. There is no dense reward for AIMING a strike at the net.
+#
+# Changes from exp_006_aim:
+#   - shot_toward_goal added (NEW, 8.0): the directional cousin of strong_touch —
+#     rewards only the goalward component of the velocity change, distance-weighted
+#     so LONG strikes pay most. This is the dense aim signal the bot was missing.
+#   - strong_touch cut 5.0 -> 1.5: power is now earned through shot_toward_goal,
+#     where it only counts if it's aimed. Keep a little flat power for clears/50s.
+#   - event.shot up 0.75 -> 1.0 (+80/shot): match the on-target stat the game
+#     itself detects — a precise long shot on net is now worth nearly a goal.
+#   - velocity_ball_to_goal eased 10 -> 6: still the dense goalward path, but it
+#     yields the lead to the sharper shot_toward_goal signal.
+#   - align_ball_goal kept (2.0): approach from the goal-side so the strike lines
+#     up at the net instead of across it.
+#   - State-setter MIX: 50% random / 40% shooting drill / 10% kickoff. The shooting
+#     drill spawns the car behind a midfield ball facing the far net — direct reps
+#     in exactly the long-range situation the bot is weak at (same philosophy as
+#     the near_ball drill in exp_005/006).
+#   - LR eased to 1.2e-4 — a focused refinement on top of a competent policy.
+#
+# Run:  python -m rlbot.training.train --config configs/experiments/exp_007_shooting.yaml
+extends: ./exp_006_aim.yaml
+
+experiment_name: exp_007_shooting
+
+state_setter:
+  name: weighted_sample
+  components:
+    - name: random
+      weight: 0.5
+      ball_rand_speed: true
+      cars_rand_speed: true
+      cars_on_ground: false       # keep air-control reps alive
+    - name: shooting              # NEW: long-range shooting drill — line up & launch
+      weight: 0.4
+    - name: default               # kickoffs — the real start of a point
+      weight: 0.1
+
+rewards:
+  zero_sum: true
+  team_spirit: 0.0                # 1v1 — never share reward with the "team"
+  opp_scale: 1.0
+  components:
+    - name: speed_toward_ball     # mobility is learned; keep some pull to the ball
+      weight: 4.0
+    - name: face_ball
+      weight: 0.25
+    - name: in_air                # insurance — don't forget the jump
+      weight: 0.5
+    - name: double_jump
+      weight: 0.3
+    - name: save_boost            # sqrt(boost) — long shots want speed, keep boost
+      weight: 0.5
+    - name: velocity_ball_to_goal # dense goalward path; yields the lead to the aim signal
+      weight: 6.0
+    - name: strong_touch          # DOWN 5.0 -> 1.5: power now counts via shot_toward_goal
+      weight: 1.5
+    - name: shot_toward_goal      # NEW: goalward Δball-speed on a touch, distance-weighted
+      weight: 8.0
+    - name: align_ball_goal       # approach from goal-side so the strike lines up
+      weight: 2.0
+    - name: event                 # on-target shots now nearly as valuable as goals
+      weight: 80.0
+      kwargs:
+        goal:         1.5         # +120 / goal — the dominant sparse signal
+        concede:     -1.0         # -80 / concede — defense stays real
+        shot:         1.0         # +80 / shot on net — UP from 0.75: reward AIM on target
+        save:         0.5         # +40 / save
+        boost_pickup: 0.15        # +12 full pad when empty — grab boost when convenient
+
+learner:
+  policy_lr: 1.2e-4               # ease down: refine aim on a competent policy
+  critic_lr: 1.2e-4
+  ts_per_iteration: 100_000
+  ppo_batch_size: 100_000
+  ppo_minibatch_size: 25_000
+  exp_buffer_size: 300_000
+  save_every_ts: 10_000_000
+  init_from: exp_006_aim          # warm-start the mobile chase/aerial policy
+  timestep_limit: 700_000_000     # CUMULATIVE — ~200M new on top of exp_006_aim's 500M
+
+logging:
+  wandb_group: exp_007_shooting

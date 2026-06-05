@@ -1,0 +1,96 @@
+# ============================================================================
+# CURRICULUM STAGE — "Boost economy"  (Gold+: stop running empty, set up aerials)
+# ============================================================================
+# A SHORT, focused 50M-step nudge on top of exp_007_shooting. The shooting bot is
+# improving but lives permanently out of boost: it burns what it has fast and,
+# mostly, doesn't pick up enough. An empty bot can't aerial or play complex shots,
+# so this caps the shooting curriculum's progress. This run keeps scoring/defense
+# as the dominant signal and the shooting rewards UNTOUCHED (they're still earning
+# their keep), and adds two boost levers so the bot keeps a reserve on hand —
+# which should let aerials and richer shots emerge on their own.
+# Warm-starts from exp_007_shooting; obs/action/arch stay LOCKED across the curriculum.
+#
+# Two boost levers (one for "have more", one for "pick up more"):
+#   - save_boost 0.5 -> 1.0: dense per-step sqrt(boost). The sqrt shape is exactly
+#     right here — the marginal reward for the FIRST bit of boost is large and it
+#     flattens near full, so this punishes running *empty* without discouraging
+#     spending boost from a healthy reserve (no hoarding, no passivity). Directly
+#     targets "always have a bit more boost on them."
+#   - event.boost_pickup 0.15 -> 0.3: doubles the payout for actually grabbing a
+#     pad (+24 big pad / +3.6 small pad at event weight 80). Targets the main cause
+#     the user identified — not picking up enough. Still well under a shot (+80) or
+#     goal (+120), and pad respawn cooldowns + zero_sum keep it from being farmable.
+#
+# Deliberately UNCHANGED (don't back off — shooting isn't good enough yet):
+#   - shot_toward_goal 8.0, strong_touch 1.5, velocity_ball_to_goal 6.0,
+#     align_ball_goal 2.0, and the full event scoring/defense block.
+#
+# State-setter MIX shifts toward realistic open play, where boost routes and
+# aerials actually matter: 55% random / 25% shooting drill / 20% kickoff. The
+# shooting drill stays in (further scoring) but yields room to general play; the
+# kickoff bump gives reps of the post-kickoff scramble for boost.
+#
+# Run:  python -m rlbot.training.train --config configs/experiments/exp_008_boost.yaml
+extends: ./exp_007_shooting.yaml
+
+experiment_name: exp_008_boost
+
+state_setter:
+  name: weighted_sample
+  components:
+    - name: random
+      weight: 0.55
+      ball_rand_speed: true
+      cars_rand_speed: true
+      cars_on_ground: false       # keep air-control reps alive
+    - name: shooting              # keep long-range scoring reps — don't back off
+      weight: 0.25
+    - name: default               # kickoffs — the post-kickoff scramble for boost
+      weight: 0.2
+
+rewards:
+  zero_sum: true
+  team_spirit: 0.0                # 1v1 — never share reward with the "team"
+  opp_scale: 1.0
+  components:
+    - name: speed_toward_ball     # mobility is learned; keep some pull to the ball
+      weight: 4.0
+    - name: face_ball
+      weight: 0.25
+    - name: in_air                # insurance — don't forget the jump
+      weight: 0.5
+    - name: double_jump
+      weight: 0.3
+    - name: save_boost            # UP 0.5 -> 1.0: dense sqrt(boost) — don't run empty
+      weight: 1.0
+    - name: velocity_ball_to_goal # UNCHANGED — dense goalward path
+      weight: 6.0
+    - name: strong_touch          # UNCHANGED
+      weight: 1.5
+    - name: shot_toward_goal      # UNCHANGED — shooting still leads the dense shaping
+      weight: 8.0
+    - name: align_ball_goal       # UNCHANGED — approach from goal-side
+      weight: 2.0
+    - name: event                 # scoring/defense stays the dominant signal
+      weight: 80.0
+      kwargs:
+        goal:         1.5         # +120 / goal — still the biggest single event
+        concede:     -1.0         # -80 / concede — defense stays real
+        shot:         1.0         # +80 / shot on net — unchanged
+        save:         0.5         # +40 / save
+        boost_pickup: 0.5         # UP 0.15 -> 0.5: +40 big pad / +5 small pad
+
+learner:
+  policy_lr: 1.2e-4               # keep refining; short run, modest plasticity for the new habit
+  critic_lr: 1.2e-4
+  ts_per_iteration: 100_000
+  ppo_batch_size: 100_000
+  ppo_minibatch_size: 25_000
+  exp_buffer_size: 300_000
+  save_every_ts: 5_000_000        # finer checkpointing — it's only a 50M run
+  init_from: exp_007_shooting     # warm-start the shooting policy (latest checkpoint)
+  timestep_limit: 750_000_000     # CUMULATIVE — exp_007's 700M finish + 50M new
+                                  # (pivoting before 700M? set to <checkpoint_ts> + 50M)
+
+logging:
+  wandb_group: exp_008_boost
