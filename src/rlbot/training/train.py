@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import shutil
 import subprocess
 from datetime import datetime
 from pathlib import Path
@@ -44,6 +43,32 @@ def _snapshot_run_metadata(cfg: Config, run_dir: Path) -> None:
         "config": cfg.to_dict(),
     }
     (run_dir / "run_metadata.json").write_text(json.dumps(meta, indent=2), encoding="utf-8")
+
+
+def _find_latest_checkpoint(experiment_name: str) -> str | None:
+    """Locate the most recent rlgym-ppo checkpoint dir for an experiment, or None.
+
+    Works around an rlgym-ppo bug: its built-in ``checkpoint_load_folder="latest"``
+    mis-parses the timestamped save folders (it indexes the short folder name with a
+    full-path offset), finds nothing, and silently restarts training from scratch.
+    We find the latest ``checkpoints/<exp>-<unix>/<timestep>`` dir ourselves and hand
+    it to the Learner explicitly, so resume (and the Stage 3 -> Stage 4 reward shift)
+    actually continue the policy instead of starting over. Returns None on a fresh run.
+    """
+    if not CHECKPOINT_ROOT.exists():
+        return None
+    best: tuple[int, int, Path] | None = None  # (run_unix, timestep, path)
+    for run_dir in CHECKPOINT_ROOT.glob(f"{experiment_name}-*"):
+        suffix = run_dir.name[len(experiment_name) + 1 :]
+        if not run_dir.is_dir() or not suffix.isdigit():
+            continue
+        steps = [int(d.name) for d in run_dir.iterdir() if d.is_dir() and d.name.isdigit()]
+        if not steps:
+            continue
+        cand = (int(suffix), max(steps), run_dir / str(max(steps)))
+        if best is None or cand[:2] > best[:2]:
+            best = cand
+    return str(best[2]) if best else None
 
 
 def train(cfg: Config) -> None:
@@ -103,6 +128,7 @@ def train(cfg: Config) -> None:
         wandb_group_name=log_cfg.get("wandb_group", cfg.experiment_name),
         wandb_run_name=log_cfg.get("wandb_run", None),
         checkpoints_save_folder=str(run_dir),
+        checkpoint_load_folder=_find_latest_checkpoint(cfg.experiment_name),
         policy_layer_sizes=arch,
         critic_layer_sizes=arch,
         render=False,
