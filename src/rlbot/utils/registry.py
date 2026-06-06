@@ -9,6 +9,7 @@ Example:
 
     cls = REWARDS.get("velocity_player_to_ball")
 """
+
 from __future__ import annotations
 
 from collections.abc import Callable
@@ -33,9 +34,7 @@ class Registry(Generic[T]):
 
     def get(self, key: str) -> type[T] | Callable[..., T]:
         if key not in self._items:
-            raise KeyError(
-                f"{self.name}: '{key}' not registered. Available: {sorted(self._items)}"
-            )
+            raise KeyError(f"{self.name}: '{key}' not registered. Available: {sorted(self._items)}")
         return self._items[key]
 
     def keys(self) -> list[str]:

@@ -4,6 +4,7 @@
 
 Resumes automatically if `checkpoints/<experiment_name>/latest` exists.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -133,8 +134,10 @@ def train(cfg: Config) -> None:
         critic_layer_sizes=arch,
         render=False,
     )
-    log.info(f"[bold green]Starting training[/]: {cfg.experiment_name}  arch={arch}  "
-             f"timestep_limit={L.get('timestep_limit'):,}")
+    log.info(
+        f"[bold green]Starting training[/]: {cfg.experiment_name}  arch={arch}  "
+        f"timestep_limit={L.get('timestep_limit'):,}"
+    )
     learner.learn()
 
 

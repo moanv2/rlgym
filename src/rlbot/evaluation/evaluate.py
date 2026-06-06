@@ -10,6 +10,7 @@ obs per car and feeds it to both policies). Episodes start from kickoff and end 
 goal (a win for the scoring side) or a timeout (a draw). Each network's hidden-layer
 sizes are inferred from its `PPO_POLICY.pt`, so blue and orange may differ in arch.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -57,7 +58,7 @@ def _load_policy(ckpt_dir: Path, obs_dim: int, n_actions: int, device: str):
 def _build_eval_env(config_path: str, max_seconds: int):
     """1v1 eval env: kickoff start, goal-or-timeout end."""
     full = load_config(config_path).to_dict()
-    full["state_setter"] = {"name": "default"}          # kickoff every episode
+    full["state_setter"] = {"name": "default"}  # kickoff every episode
     full["terminal"]["timeout_seconds"] = int(max_seconds)
     env_cfg = dict(full["env"])
     env_cfg["team_size"] = 1
@@ -90,8 +91,10 @@ def evaluate(
 
     blue = _load_policy(_resolve_checkpoint(blue_path), obs_dim, n_actions, device)
     orange = _load_policy(_resolve_checkpoint(orange_path), obs_dim, n_actions, device)
-    log.info(f"Eval: [cyan]{blue_path}[/] (blue) vs [magenta]{orange_path}[/] (orange) — "
-             f"{episodes} eps, deterministic={deterministic}, device={device}")
+    log.info(
+        f"Eval: [cyan]{blue_path}[/] (blue) vs [magenta]{orange_path}[/] (orange) — "
+        f"{episodes} eps, deterministic={deterministic}, device={device}"
+    )
 
     blue_wins = orange_wins = draws = 0
     for ep in range(episodes):
@@ -137,12 +140,15 @@ def main() -> None:
     p.add_argument("--max-seconds", type=int, default=60, help="Per-episode timeout (game seconds)")
     args = p.parse_args()
 
-    result = evaluate(args.blue, args.orange, args.episodes, args.deterministic,
-                      args.config, args.max_seconds)
+    result = evaluate(
+        args.blue, args.orange, args.episodes, args.deterministic, args.config, args.max_seconds
+    )
     log = get_logger("rlbot.evaluate")
-    log.info(f"Result: blue_win_rate={result['blue_win_rate']:.3f}  "
-             f"(W/L/D = {result['blue_wins']}/{result['orange_wins']}/{result['draws']}, "
-             f"decisive blue rate={result['blue_win_rate_decisive']})")
+    log.info(
+        f"Result: blue_win_rate={result['blue_win_rate']:.3f}  "
+        f"(W/L/D = {result['blue_wins']}/{result['orange_wins']}/{result['draws']}, "
+        f"decisive blue rate={result['blue_win_rate_decisive']})"
+    )
 
 
 if __name__ == "__main__":

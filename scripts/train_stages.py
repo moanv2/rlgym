@@ -42,6 +42,7 @@ Usage
     python scripts/train_stages.py --dry-run      # build each stage's env once, no training
     python scripts/train_stages.py --force        # ignore .done markers and re-run
 """
+
 from __future__ import annotations
 
 import argparse
@@ -160,17 +161,20 @@ def _done_marker(label: str) -> Path:
 
 def main() -> None:
     p = argparse.ArgumentParser(description="Run the full training curriculum end to end.")
-    p.add_argument("--from", dest="start", type=int, default=1,
-                   help="1-based stage number to start from (default 1).")
+    p.add_argument(
+        "--from", dest="start", type=int, default=1, help="1-based stage number to start from (default 1)."
+    )
     p.add_argument("--only", type=int, default=None, help="Run only this one stage number.")
-    p.add_argument("--dry-run", action="store_true",
-                   help="Build each stage's env once and exit (no training).")
-    p.add_argument("--force", action="store_true",
-                   help="Ignore .done markers and re-run stages.")
+    p.add_argument(
+        "--dry-run", action="store_true", help="Build each stage's env once and exit (no training)."
+    )
+    p.add_argument("--force", action="store_true", help="Ignore .done markers and re-run stages.")
     args = p.parse_args()
 
-    _log(f"Curriculum start | N_PROC={N_PROC} ARCH_LONG={ARCH_LONG} stages={len(STAGES)} "
-         f"from={args.start} only={args.only} dry_run={args.dry_run}")
+    _log(
+        f"Curriculum start | N_PROC={N_PROC} ARCH_LONG={ARCH_LONG} stages={len(STAGES)} "
+        f"from={args.start} only={args.only} dry_run={args.dry_run}"
+    )
 
     for i, stage in enumerate(STAGES, start=1):
         if args.only is not None and i != args.only:
@@ -187,9 +191,11 @@ def main() -> None:
         cfg_path = _write_stage_config(stage)
         merged = yaml.safe_load(cfg_path.read_text(encoding="utf-8"))
         L = merged.get("learner", {})
-        _log(f"=== Stage {i}/{len(STAGES)}: {label} | exp={merged.get('experiment_name')} "
-             f"arch={L.get('arch')} obs={merged.get('obs', {}).get('name')} "
-             f"n_proc={L.get('n_proc')} limit={int(L.get('timestep_limit', 0)):,} ===")
+        _log(
+            f"=== Stage {i}/{len(STAGES)}: {label} | exp={merged.get('experiment_name')} "
+            f"arch={L.get('arch')} obs={merged.get('obs', {}).get('name')} "
+            f"n_proc={L.get('n_proc')} limit={int(L.get('timestep_limit', 0)):,} ==="
+        )
 
         cmd = [sys.executable, "-m", "rlbot.training.train", "--config", str(cfg_path)]
         if args.dry_run:
@@ -197,8 +203,10 @@ def main() -> None:
 
         rc = subprocess.run(cmd, cwd=str(REPO_ROOT)).returncode
         if rc != 0:
-            _log(f"Stage {i} '{label}' exited with code {rc}. Stopping. "
-                 f"Fix the issue and re-run -- finished stages are skipped, this one resumes.")
+            _log(
+                f"Stage {i} '{label}' exited with code {rc}. Stopping. "
+                f"Fix the issue and re-run -- finished stages are skipped, this one resumes."
+            )
             sys.exit(rc)
 
         if not args.dry_run:

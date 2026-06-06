@@ -4,6 +4,7 @@
 Requires rlviser_py installed and the visualizer binary running. See:
 https://github.com/VirxEC/rlviser
 """
+
 from __future__ import annotations
 
 import argparse

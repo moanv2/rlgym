@@ -8,6 +8,7 @@ random, weighted by ``weights``, and delegates the reset to it.
 This matches how LookupAction is vendored at ``rlbot/actions/lookup_action.py`` to
 decouple from the rlgym-tools v2 API.
 """
+
 from __future__ import annotations
 
 from collections.abc import Sequence

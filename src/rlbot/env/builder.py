@@ -5,6 +5,7 @@ to each one, so the callable must be picklable. A nested closure is NOT picklabl
 (Python can't pickle local functions), so we return a module-level callable class
 that stores only plain config values and builds the env lazily in each worker.
 """
+
 from __future__ import annotations
 
 from collections.abc import Callable
@@ -51,12 +52,6 @@ class _EnvBuilder:
         )
 
         # Optional rlgym-tools wrappers (e.g. SB3 logging) — opt-in, left as a hook.
-        if self.sb3_metrics:
-            try:
-                from rlgym_tools.sb3_utils.sb3_log_reward import SB3CombinedLogReward  # noqa
-            except ImportError:
-                pass
-
         return env
 
 

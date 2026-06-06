@@ -1,4 +1,5 @@
 """Configs are the single source of truth — keep them parseable + sane."""
+
 from __future__ import annotations
 
 from pathlib import Path

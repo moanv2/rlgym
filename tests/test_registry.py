@@ -1,4 +1,5 @@
 """Smoke tests for the generic Registry helper."""
+
 from __future__ import annotations
 
 import pytest
