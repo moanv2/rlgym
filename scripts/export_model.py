@@ -3,6 +3,7 @@
 
 Final-week task. See docs/roadmap_45_days.md week 5.
 """
+
 from __future__ import annotations
 
 import argparse

@@ -1,4 +1,5 @@
 """Make sure the named architectures stay consistent."""
+
 from __future__ import annotations
 
 import pytest

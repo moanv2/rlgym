@@ -4,6 +4,7 @@ Tick-time conversions:
     physics fps = 120, default tick_skip = 8, so 1 step ≈ 1/15 s
     timeout_seconds * 120 = timeout_ticks
 """
+
 from __future__ import annotations
 
 from typing import Any

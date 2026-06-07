@@ -16,6 +16,7 @@ Config schema (excerpt):
             concede: -1.0
             demo: 0.1
 """
+
 from __future__ import annotations
 
 from typing import Any

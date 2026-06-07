@@ -1,5 +1,6 @@
 """Pick an obs builder by name. Keep the API stable across experiments — changing obs
 mid-training invalidates the policy network."""
+
 from __future__ import annotations
 
 from typing import Any

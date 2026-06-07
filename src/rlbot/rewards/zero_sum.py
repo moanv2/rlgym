@@ -12,6 +12,7 @@ opp_scale: how strongly to penalize the opponent's gain (usually 1.0).
 
 NOTE: rlgym-sim does not pass `previous_action` to child rewards.
 """
+
 from __future__ import annotations
 
 import numpy as np

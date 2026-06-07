@@ -3,6 +3,7 @@
 For early training, RandomState with airborne cars + random ball velocity gets the
 bot exposed to a much wider distribution of states than kickoff alone.
 """
+
 from __future__ import annotations
 
 from typing import Any

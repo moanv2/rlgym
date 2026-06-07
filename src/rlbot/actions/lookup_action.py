@@ -4,6 +4,7 @@ Vendored from rlgym-tools v1 (the v2 ecosystem moved this file). Stable, well-te
 across the bot community. The action space is a single Discrete head; each index
 maps to an 8-dim controller vector: [throttle, steer, pitch, yaw, roll, jump, boost, handbrake].
 """
+
 from __future__ import annotations
 
 import numpy as np
@@ -27,9 +28,7 @@ class LookupAction(ActionParser):
                     for handbrake in (0, 1):
                         if boost == 1 and throttle != 1:
                             continue
-                        actions.append(
-                            [throttle or boost, steer, 0, steer, 0, 0, boost, handbrake]
-                        )
+                        actions.append([throttle or boost, steer, 0, steer, 0, 0, boost, handbrake])
         # Aerial
         for pitch in (-1, 0, 1):
             for yaw in (-1, 0, 1):
@@ -41,9 +40,7 @@ class LookupAction(ActionParser):
                             if pitch == roll == jump == 0:
                                 continue
                             handbrake = jump == 1 and (pitch != 0 or yaw != 0 or roll != 0)
-                            actions.append(
-                                [boost, yaw, pitch, yaw, roll, jump, boost, int(handbrake)]
-                            )
+                            actions.append([boost, yaw, pitch, yaw, roll, jump, boost, int(handbrake)])
         return np.array(actions, dtype=np.float32)
 
     def get_action_space(self) -> Discrete:

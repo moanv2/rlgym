@@ -4,6 +4,7 @@ Adding a new reward? Either:
   1. Register an existing rlgym_sim/rlgym-tools reward here, or
   2. Write a new RewardFunction subclass and decorate it with @REWARDS.register("my_name")
 """
+
 from __future__ import annotations
 
 from rlbot.rewards.registry import REWARDS
