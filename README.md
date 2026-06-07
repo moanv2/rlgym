@@ -28,6 +28,10 @@ python scripts/evaluate.py \
   --blue checkpoints/exp_001_baseline/latest \
   --orange checkpoints/exp_000_random/latest \
   --episodes 100
+
+# 6. Run the team tournament — round-robin + Elo across everyone's bots, even when
+#    they use different obs builders / net sizes. See docs/TOURNAMENT.md to submit a bot.
+python scripts/tournament.py --manifest configs/tournament_bots.yaml --games 30
 ```
 
 ## Layout

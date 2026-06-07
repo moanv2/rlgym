@@ -1,0 +1,16 @@
+# Tournament entrants for scripts/tournament.py — one entry per trained bot.
+# Copy this to configs/tournament_bots.yaml and point each `policy` at a real checkpoint
+# (checkpoints are gitignored, so paths are local to whoever runs the bracket).
+#
+#   obs: 'advanced' = AdvancedObs (107-dim in 1v1)   |   'default' = DefaultObs (89-dim)
+#   The network width (512x3, 1024x3, ...) is auto-detected from the weights — don't set it.
+#   A bot MUST use the repo's 90-action LookupAction to be compatible.
+#   A bot trained on a CUSTOM obs builder can't be entered unless that builder is added to
+#   make_obs() in scripts/tournament.py.
+#
+# Run:  python scripts/tournament.py --manifest configs/tournament_bots.yaml --games 30
+bots:
+  - {label: martin_1024x3, policy: checkpoints/<your-run-id>/<step>, obs: advanced}
+  - {label: diego_512x3,   policy: diego-bots/checkpoints/MILESTONE_1.18B_nexto_plus_kickoff_512, obs: default}
+  # - {label: nachi,  policy: <path to PPO_POLICY.pt or its folder>, obs: default}
+  # - {label: marian, policy: <path>, obs: default}
