@@ -1,0 +1,114 @@
+{
+    "cumulative_timesteps": 2130310514,
+    "cumulative_model_updates": 255492,
+    "policy_average_reward": 12.573286895428637,
+    "epoch": 42588,
+    "ts_since_last_save": 5000602,
+    "reward_running_stats": {
+        "mean": [
+            0.29215686460844925
+        ],
+        "var": [
+            176075129470.42313
+        ],
+        "shape": [
+            1
+        ],
+        "count": 6390000
+    },
+    "wandb_run_id": "twotz849",
+    "wandb_project": "rlgym-finalproject",
+    "wandb_entity": "diego08-ie-university",
+    "wandb_group": "exp_003_long_run",
+    "wandb_config": {
+        "experiment_name": "exp_003_long_run",
+        "seed": 42,
+        "env": {
+            "team_size": 1,
+            "spawn_opponents": true,
+            "tick_skip": 8
+        },
+        "obs": {
+            "name": "advanced"
+        },
+        "action": {
+            "name": "lookup"
+        },
+        "rewards": {
+            "components": [
+                {
+                    "weight": 0.1,
+                    "name": "velocity_player_to_ball"
+                },
+                {
+                    "weight": 0.05,
+                    "name": "face_ball"
+                },
+                {
+                    "name": "velocity_ball_to_goal",
+                    "weight": 0.3
+                },
+                {
+                    "kwargs": {
+                        "shot": 0.1,
+                        "demo": 0.1,
+                        "goal": 1,
+                        "concede": -1
+                    },
+                    "name": "event",
+                    "weight": 8
+                }
+            ],
+            "zero_sum": true,
+            "team_spirit": 0,
+            "opp_scale": 1
+        },
+        "state_setter": {
+            "cars_rand_speed": true,
+            "cars_on_ground": false,
+            "components": [
+                {
+                    "cars_rand_speed": true,
+                    "cars_on_ground": false,
+                    "name": "random",
+                    "weight": 0.7,
+                    "ball_rand_speed": true
+                },
+                {
+                    "weight": 0.3,
+                    "name": "default"
+                }
+            ],
+            "name": "weighted_sample",
+            "ball_rand_speed": true
+        },
+        "terminal": {
+            "goal_scored": true,
+            "no_touch_timeout_seconds": 10,
+            "timeout_seconds": 300
+        },
+        "learner": {
+            "ppo_minibatch_size": 50000,
+            "n_proc": 20,
+            "ts_per_iteration": 50000,
+            "arch": "large",
+            "ppo_batch_size": 50000,
+            "exp_buffer_size": 150000,
+            "save_every_ts": 5000000,
+            "ppo_epochs": 2,
+            "standardize_returns": true,
+            "min_inference_size": 80,
+            "standardize_obs": false,
+            "ppo_ent_coef": 0.01,
+            "timestep_limit": 250000000
+        },
+        "logging": {
+            "wandb_entity": "diego08-ie-university",
+            "wandb_group": "exp_003_long_run",
+            "wandb_run": "stage3_basics",
+            "sb3_metrics": false,
+            "wandb": true,
+            "wandb_project": "rlgym-finalproject"
+        }
+    }
+}
