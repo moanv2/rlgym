@@ -89,7 +89,7 @@ learner:
   exp_buffer_size: 300_000
   save_every_ts: 5_000_000        # finer checkpointing — it's only a 50M run
   init_from: exp_007_shooting     # warm-start the shooting policy (latest checkpoint)
-  timestep_limit: 750_000_000     # CUMULATIVE — exp_007's 700M finish + 50M new
+  timestep_limit: 800_000_000     # CUMULATIVE — exp_007's 700M finish + 50M new
                                   # (pivoting before 700M? set to <checkpoint_ts> + 50M)
 
 logging:

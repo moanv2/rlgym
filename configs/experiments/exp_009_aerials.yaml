@@ -1,0 +1,102 @@
+# ============================================================================
+# CURRICULUM STAGE — "Aerials"  (Plat: take it off the floor)
+# ============================================================================
+# exp_008 fixed the boost economy — the bot keeps a reserve now — but average ball
+# height is drifting DOWN: with boost in hand and good ground shooting, it has no
+# reason to leave the floor, so aerials are atrophying. This 100M run keeps the
+# boost + scoring gains (rewards UNCHANGED) and adds a height-gated aerial signal
+# plus a guaranteed supply of aerial situations so going up becomes worthwhile.
+# Warm-starts from exp_008_boost; obs/action/arch stay LOCKED across the curriculum.
+#
+# Aerial levers (moderate — scoring stays dominant):
+#   - air_touch added (2.5): rewards a touch scaled by min(air-time, ball-height),
+#     so it only pays for a real, sustained aerial on a high ball — not a cheap
+#     hop or a wall read. Stacks with shot_toward_goal/strong_touch when the aerial
+#     is also a shot, so an aerial GOAL is richly rewarded.
+#   - double_jump 0.3 -> 0.5: the air jump is the gateway to height and air control;
+#     nudge the bot to keep spending it.
+#   - in_air 0.5 -> 0.6: a touch more "stay willing to jump" insurance.
+#
+# Deliberately UNCHANGED (don't undo exp_007/008):
+#   - shot_toward_goal 8.0, strong_touch 1.5, velocity_ball_to_goal 6.0,
+#     align_ball_goal 2.0, save_boost 1.0, and the full event block incl.
+#     boost_pickup 0.5. Boost held HIGH directly enables aerials — good synergy.
+#
+# State-setter MIX adds a dedicated aerial drill: 45% random / 20% shooting /
+# 20% aerial / 15% kickoff. The aerial drill floats a reachable ball with the car
+# grounded below it and boost loaded — direct reps of "go up and hit it" (same
+# drill philosophy as near_ball in exp_005 and shooting in exp_007). Shooting stays
+# in so ground finishing doesn't regress.
+#
+# Watch on wandb: play/avg_ball_height and play/pct_airborne should rise while
+# score/goals_per_1k_steps and boost/avg_held_pct hold. If goals or boost sag, the
+# bot is over-committing to the air — trim air_touch toward 1.5 and the aerial-drill
+# weight toward 0.1.
+#
+# Run:  python -m rlbot.training.train --config configs/experiments/exp_009_aerials.yaml
+extends: ./exp_008_boost.yaml
+
+experiment_name: exp_009_aerials
+
+state_setter:
+  name: weighted_sample
+  components:
+    - name: random
+      weight: 0.45
+      ball_rand_speed: true
+      cars_rand_speed: true
+      cars_on_ground: false       # half airborne — aerial-friendly
+    - name: shooting              # keep ground finishing sharp — don't regress
+      weight: 0.2
+    - name: aerial                # NEW: high-ball drill — go up and hit it
+      weight: 0.2
+    - name: default               # kickoffs
+      weight: 0.15
+
+rewards:
+  zero_sum: true
+  team_spirit: 0.0                # 1v1 — never share reward with the "team"
+  opp_scale: 1.0
+  components:
+    - name: speed_toward_ball     # mobility is learned; keep some pull to the ball
+      weight: 4.0
+    - name: face_ball
+      weight: 0.25
+    - name: in_air                # UP 0.5 -> 0.6: stay willing to jump
+      weight: 0.6
+    - name: double_jump           # UP 0.3 -> 0.5: the air jump unlocks height
+      weight: 0.5
+    - name: save_boost            # UNCHANGED — boost held high enables aerials
+      weight: 1.0
+    - name: velocity_ball_to_goal # UNCHANGED — dense goalward path
+      weight: 6.0
+    - name: strong_touch          # UNCHANGED
+      weight: 1.5
+    - name: shot_toward_goal      # UNCHANGED — scoring still leads the dense shaping
+      weight: 8.0
+    - name: air_touch             # NEW: min(air-time, ball-height) — real aerials only
+      weight: 2.5
+    - name: align_ball_goal       # UNCHANGED — approach from goal-side
+      weight: 2.0
+    - name: event                 # UNCHANGED — scoring/defense stays dominant
+      weight: 80.0
+      kwargs:
+        goal:         1.5         # +120 / goal — still the biggest single event
+        concede:     -1.0         # -80 / concede
+        shot:         1.0         # +80 / shot on net
+        save:         0.5         # +40 / save
+        boost_pickup: 0.75         # keep the boost-economy lever from exp_008
+
+learner:
+  policy_lr: 1.2e-4               # keep refining; plasticity for the new mechanic
+  critic_lr: 1.2e-4
+  ts_per_iteration: 100_000
+  ppo_batch_size: 100_000
+  ppo_minibatch_size: 25_000
+  exp_buffer_size: 300_000
+  save_every_ts: 10_000_000       # ~10 checkpoints across the 100M run
+  init_from: exp_008_boost        # warm-start the boost-economy policy
+  timestep_limit: 1_100_000_000     # CUMULATIVE — ~100M new on top of exp_008's ~800M
+
+logging:
+  wandb_group: exp_009_aerials

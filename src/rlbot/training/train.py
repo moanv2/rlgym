@@ -226,6 +226,14 @@ def train(cfg: Config, keep_system_awake: bool = True) -> None:
     wandb_enabled = bool(log_cfg.get("wandb", True))
     wandb_entity = log_cfg.get("wandb_entity")
 
+    # In-game metrics (boost economy, scoring/defense rates) on top of rlgym_ppo's
+    # PPO-internal logging. On by default; set logging.metrics: false to disable.
+    metrics_logger = None
+    if bool(log_cfg.get("metrics", True)):
+        from rlbot.training.metrics import BotMetricsLogger
+
+        metrics_logger = BotMetricsLogger()
+
     # rlgym_ppo's Learner doesn't expose `wandb_entity` directly. If a team
     # entity is set in the config, we pre-init the wandb run ourselves and
     # hand it to the Learner via the `wandb_run` kwarg.
@@ -247,7 +255,7 @@ def train(cfg: Config, keep_system_awake: bool = True) -> None:
         env_builder,
         n_proc=int(L.get("n_proc", 8)),
         min_inference_size=int(L.get("min_inference_size", 80)),
-        metrics_logger=None,
+        metrics_logger=metrics_logger,
         ppo_batch_size=int(L.get("ppo_batch_size", 50_000)),
         ts_per_iteration=int(L.get("ts_per_iteration", 50_000)),
         exp_buffer_size=int(L.get("exp_buffer_size", 150_000)),
