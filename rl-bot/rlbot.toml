@@ -1,0 +1,55 @@
+#:schema https://rlbot.org/schemas/match.json
+# Standard match config: MoanV2 RLBot (Blue) vs a Psyonix bot (Orange), 1v1.
+# `python run.py` launches RLBotServer + this match.
+[rlbot]
+# "Steam", "Epic", "Custom", "NoLaunch"
+launcher = "Steam"
+# Let RLBot start the bot processes automatically (uses each car's run_command).
+auto_start_agents = true
+# Wait for the bot processes to be up before starting the match.
+wait_for_agents = true
+
+[match]
+# "Soccer", "Hoops", "Dropshot", "Hockey", "Rumble", "Heatseeker", "Gridiron", "Knockout"
+game_mode = "Soccer"
+# Which map to load.
+game_map_upk = "Stadium_P"
+# "RestartIfDifferent", "Restart", "ContinueAndSpawn"
+existing_match_behavior = "Restart"
+skip_replays = false
+start_without_countdown = false
+# Off for normal play (cheaper). dev.toml turns this on for debugging.
+enable_rendering = false
+# Allows scripts to set ball/car state — handy for drills.
+enable_state_setting = true
+auto_save_replay = false
+freeplay = false
+
+[mutators]
+# "FiveMinutes", "TenMinutes", "TwentyMinutes", "Unlimited"
+match_length = "FiveMinutes"
+# "Unlimited", "OneGoal", "ThreeGoals", ...
+max_score = "Unlimited"
+# "Default", "SloMo", "TimeWarp"
+game_speed = "Default"
+# "NormalBoost", "UnlimitedBoost", "SlowRecharge", "RapidRecharge", "NoBoost"
+boost_amount = "NormalBoost"
+# "Default", "Low", "High", "SuperHigh", "Reverse"
+gravity = "Default"
+# "Default", "Disabled", "FriendlyFire", "OnContact", ...
+demolish = "Default"
+# "Three_Seconds", "TwoSeconds", "OneSecond", "DisableGoalReset"
+respawn_time = "ThreeSeconds"
+
+# --- My bot (Blue) -----------------------------------------------------------
+[[cars]]
+config_file = "src/bot.toml"
+team = "Blue"
+auto_start = true
+
+# --- Sparring opponent: a built-in Psyonix bot (Orange) ----------------------
+# "Beginner", "Rookie", "Pro", "AllStar"
+[[cars]]
+type = "Psyonix"
+skill = "AllStar"
+team = "Orange"

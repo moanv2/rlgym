@@ -1,0 +1,19 @@
+# Conda environment for the RLBot v5 deployment bot.
+#
+# This is the analog of your `rlbot310` training env, but for DEPLOYMENT:
+# v5 requires Python 3.12+, whereas rlbot310 is pinned to 3.10 for the
+# rlgym_ppo/rocketsim training stack. They are intentionally SEPARATE envs.
+#
+# Create it identically on any machine:
+#     conda env create -f environment.yml
+#     conda activate rlbotv5
+#
+# (If you prefer a plain venv instead of conda, use scripts/setup.ps1 / setup.sh.)
+name: rlbotv5
+channels:
+  - conda-forge
+dependencies:
+  - python=3.12
+  - pip
+  - pip:
+      - -r requirements.txt

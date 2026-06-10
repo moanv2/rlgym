@@ -1,0 +1,72 @@
+{
+  "run_number": 28,
+  "experiment_name": "papaya_1024",
+  "wandb_run_name": "papaya_1024_828M",
+  "wandb_final_name": null,
+  "stop_reason": "keyboard_interrupt",
+  "started_at": "2026-06-09T18:53:49.018557+00:00",
+  "ended_at": "2026-06-09T19:00:28.479813+00:00",
+  "duration_seconds": 399.5,
+  "wandb_run_id": null,
+  "wandb_run_url": null,
+  "wandb_entity": null,
+  "wandb_project": null,
+  "cumulative_timesteps_end": 830643830,
+  "final_metrics": {},
+  "config": {
+    "experiment_name": "papaya_1024",
+    "n_proc": 16,
+    "ppo_batch_size": 100000,
+    "ts_per_iteration": 100000,
+    "ppo_minibatch_size": 100000,
+    "exp_buffer_size": 300000,
+    "min_inference_size": 180,
+    "ppo_epochs": 2,
+    "ppo_ent_coef": 0.01,
+    "policy_layer_sizes": [
+      1024,
+      1024,
+      1024
+    ],
+    "critic_layer_sizes": [
+      1024,
+      1024,
+      1024
+    ],
+    "standardize_returns": true,
+    "standardize_obs": false,
+    "save_every_ts": 100000,
+    "reward_function": "ZeroSumReward(CombinedReward(nexto_base [unwrapped] + custom_rl rewards))",
+    "reward_components": [
+      "nexto_base (10-component Nexto-style, weight 1.0)",
+      "SupersonicReward (weight 0.1) [v3: 0.05\u21920.1]",
+      "AerialBallReward (weight 0.5)",
+      "AerialTouchReward (weight 1.5) [v2: real aerial contact]",
+      "BigBoostProximityReward (weight 0.8) [v3: 0.5\u21920.8, threshold 0.30\u21920.40]",
+      "BackboardDefenseReward (weight 0.4)",
+      "BallAwayFromOwnGoalReward (weight 0.6) [v2: anti own-goal]",
+      "DribbleToGoalReward (weight 0.15) [v3: dribble toward enemy net]",
+      "KickoffReward (weight 0.3) [v3: win the kickoff]",
+      "MaintainSpeedReward (weight 0.1) [v3: keep pace for rotations]",
+      "RecoveryReward (weight 0.15) [v4: clean recoveries, land wheels-down, air-gated]",
+      "FlickReward (weight 1.0) [v4: flick the ball off a dribble toward the net]",
+      "ZeroSumReward wrapping (team_spirit=0, opp_scale=1)"
+    ],
+    "reward_version": "v4 (papaya: +recovery, +flick mechanics; aerial/dribble drill states added)",
+    "nexto_base_components": [
+      "VelocityPlayerToBallReward (weight 0.6)",
+      "LiuDistancePlayerToBallReward (weight 0.7)",
+      "VelocityBallToGoalReward (weight 2.0)",
+      "LiuDistanceBallToGoalReward (weight 1.0)",
+      "AlignBallGoal(defense=1, offense=1) (weight 0.4)",
+      "BallYCoordinateReward (weight 0.5)",
+      "FaceBallReward (weight 0.3)",
+      "TouchBallReward (weight 5.0)",
+      "SaveBoostReward (weight 0.05)",
+      "EventReward(goal=10, concede=-10, shot=1.5, save=3, touch=0.05, demo=0.5, boost_pickup=0.6) (weight 12.0)"
+    ],
+    "obs_builder": "AdvancedObs (107-dim, custom rlgym_sim-compatible; rel pos/vel to ball & opponent)",
+    "action_parser": "LookupAction (90 discrete actions)",
+    "state_setter": "WeightedSampleSetter(RandomState 0.45 + RandomKickoffSetter 0.25 + AerialSetupState 0.15 + DribbleSetupState 0.15)"
+  }
+}

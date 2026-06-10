@@ -61,6 +61,9 @@ def build_nexto_style_reward(
     zero_sum: bool = True,
     team_spirit: float = 0.0,
     opp_scale: float = 1.0,
+    velocity_player_to_ball_weight: float = 0.6,
+    liu_distance_player_to_ball_weight: float = 0.7,
+    save_boost_weight: float = 0.05,
 ):
     """Construct the full Nexto-style reward stack.
 
@@ -120,14 +123,14 @@ def build_nexto_style_reward(
             save=3.0,
             touch=0.05,        # constant small per-touch event (separate from continuous TouchBallReward)
             demo=0.5,
-            boost_pickup=0.3,
+            boost_pickup=0.6,  # v3: 0.3→0.6 — make each pad pickup a clearer positive event (bot was ignoring big pads)
         ),
     )
 
     weights = (
-        # approach
-        0.6,   # velocity_player_to_ball
-        0.7,   # liu_distance_player_to_ball
+        # approach (overridable — papaya v5 lowers these to curb overcommitting)
+        velocity_player_to_ball_weight,   # velocity_player_to_ball (default 0.6)
+        liu_distance_player_to_ball_weight,  # liu_distance_player_to_ball (default 0.7)
         # offensive
         2.0,   # velocity_ball_to_goal
         1.0,   # liu_distance_ball_to_goal
@@ -137,8 +140,8 @@ def build_nexto_style_reward(
         # engagement
         0.3,   # face_ball
         5.0,   # touch_ball
-        # resource
-        0.05,  # save_boost
+        # resource (overridable — papaya v5 raises this for boost conservation)
+        save_boost_weight,  # save_boost (default 0.05)
         # event
         12.0,  # event_reward
     )

@@ -1,0 +1,30 @@
+#:schema https://rlbot.org/schemas/match.json
+# Dev match config: rendering ON, you start the bot yourself (via run_only.py or
+# `python src/bot.py`) so you can restart the bot WITHOUT restarting the match.
+[rlbot]
+launcher = "Steam"
+# We start the bot ourselves, so don't let RLBot auto-start it.
+auto_start_agents = false
+
+[match]
+game_mode = "Soccer"
+game_map_upk = "Stadium_P"
+existing_match_behavior = "Restart"
+# Debug drawing on (bot.py also has its own DEBUG_RENDER guard).
+enable_rendering = true
+enable_state_setting = true
+freeplay = false
+
+[mutators]
+match_length = "Unlimited"
+
+# My bot (Blue). auto_start unset -> not auto-started; launch it yourself.
+[[cars]]
+config_file = "src/bot.toml"
+team = "Blue"
+
+# Psyonix sparring opponent (Orange).
+[[cars]]
+type = "Psyonix"
+skill = "AllStar"
+team = "Orange"

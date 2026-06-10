@@ -39,6 +39,9 @@ wandb/
 *.pt
 *.ckpt
 *.onnx
+# Exception: the deployment bot bundles its policy weights so it can play on any
+# machine. These MUST be tracked despite the *.pt rule above.
+!rl-bot/src/policy/weights/PPO_POLICY.pt
 
 # Rocket League / RLGym specific
 collision_meshes/

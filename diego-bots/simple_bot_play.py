@@ -91,48 +91,65 @@ def build_env():
 
 
 # --------------------------------------------------------------------------
-# Find the latest checkpoint timestep folder.
+# Find the latest checkpoint timestep folder for the current experiment.
 #
-# Folder structure produced by rlgym_ppo:
+# Folder structure produced by the experiment-aware simple_bot.py:
 #   diego-bots/checkpoints/
-#     simple_bot-<timestamp>/        <- one folder per training run
-#       100000/                       <- one folder per save_every_ts hit
-#         PPO_POLICY.pt + others
-#       200008/
-#       ...
-#       500028/                       <- latest, what we want
+#     <EXPERIMENT_NAME>/                  <- one folder per experiment
+#       <session-id-1>/                    <- one folder per training session
+#         100000/                           <- one folder per save_every_ts hit
+#           PPO_POLICY.pt + others
+#         200000/
+#         ...
+#       <session-id-2>/                    <- a later resumed session
+#         26200000/                         <- latest, what we want
+#
+# Set EXPERIMENT_NAME at the top of this file to match the experiment whose
+# checkpoint you want to watch. The default mirrors simple_bot.py.
 #
 # rlgym_ppo's Learner.load_from() expects the path to point at a specific
 # timestep folder (it reads PPO_POLICY.pt directly), not the parent run
-# folder. So we walk two levels: pick the most recent run, then the
-# largest numeric timestep folder inside it.
+# folder. So we walk three levels: pick the most recent session inside the
+# experiment folder, then the largest numeric timestep folder inside that.
 # --------------------------------------------------------------------------
-def find_latest_checkpoint() -> str:
-    ckpt_root = Path("diego-bots/checkpoints")
+EXPERIMENT_NAME = "nexto_rewards"  # change to match the experiment you want to watch
+
+
+def find_latest_checkpoint(experiment: str = EXPERIMENT_NAME) -> str:
+    base_path = Path("diego-bots/checkpoints") / experiment
+    if not base_path.exists():
+        # Fallback: if no per-experiment folder yet, fall back to the legacy
+        # top-level scan so we can still watch older checkpoints.
+        base_path = Path("diego-bots/checkpoints")
+        scan_pattern = "simple_bot*"
+    else:
+        scan_pattern = "*"
+
     run_folders = sorted(
-        [p for p in ckpt_root.glob("simple_bot*") if p.is_dir()],
+        [p for p in base_path.glob(scan_pattern) if p.is_dir()],
         key=lambda p: p.stat().st_mtime,
         reverse=True,
     )
     if not run_folders:
         raise SystemExit(
-            "No checkpoint run folder found under diego-bots/checkpoints/. "
+            f"No checkpoint run folder found under {base_path}. "
             "Train first with: python diego-bots/simple_bot.py"
         )
 
-    latest_run = run_folders[0]
+    # Walk session folders, find the first one that has timestep subfolders
+    for latest_run in run_folders:
+        timestep_folders = [
+            p for p in latest_run.iterdir() if p.is_dir() and p.name.isdigit()
+        ]
+        if timestep_folders:
+            latest_ckpt = max(timestep_folders, key=lambda p: int(p.name))
+            print(f"Loading checkpoint from: {latest_ckpt}")
+            return str(latest_ckpt)
 
-    # Pick the timestep subfolder with the highest numeric name
-    timestep_folders = [p for p in latest_run.iterdir() if p.is_dir() and p.name.isdigit()]
-    if not timestep_folders:
-        raise SystemExit(
-            f"Run folder {latest_run} has no timestep subfolders yet. "
-            "Did training save at least one checkpoint?"
-        )
-    latest_ckpt = max(timestep_folders, key=lambda p: int(p.name))
-
-    print(f"Loading checkpoint from: {latest_ckpt}")
-    return str(latest_ckpt)
+    raise SystemExit(
+        f"Found run folders under {base_path} but none contain timestep subfolders. "
+        "Did training save at least one checkpoint?"
+    )
 
 
 # --------------------------------------------------------------------------

@@ -1,0 +1,46 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Distribution / packaging
+.Python
+build/
+dist/
+downloads/
+eggs/
+.eggs/
+*.egg-info/
+*.egg
+
+# PyInstaller
+*.manifest
+*.spec
+
+# Virtual environments
+.venv
+venv/
+ENV/
+env/
+
+# Unit test / coverage
+.cache
+.coverage
+.coverage.*
+coverage.xml
+.mypy_cache/
+.ruff_cache/
+
+# IDEs
+.idea/
+.vscode/
+*.code-workspace
+
+# RLBot — the server binary is installed separately, never commit it
+RLBotServer*
+
+# Lockfile is generated locally; uncomment if you prefer not to track it
+# requirements.lock

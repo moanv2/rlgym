@@ -1,0 +1,23 @@
+# Runtime dependencies for the RLBot v5 deployment bot.
+#
+# Reproducibility: these lines resolve compatible versions. For a byte-for-byte
+# lock across machines, run `make freeze` (or `pip freeze > requirements.lock`)
+# after the first successful install and commit requirements.lock — then teammates
+# `pip install -r requirements.lock`.
+
+# The RLBot v5 framework — talks to RLBotServer / Rocket League.
+rlbot>=2.0.0.beta
+
+# --- Learned-controller deps (src/policy) ----------------------------------
+# The trained PPO policy (weights/PPO_POLICY.pt) runs a CPU forward pass each
+# decision; numpy builds the observation; rlgym-compat converts the RLBot v5
+# GamePacket into the rlgym-v1-style GameState that DefaultObs was trained on.
+#
+# torch: CPU inference is plenty for a single 89->512x3->90 net at 15 Hz. The
+# default PyPI wheel on Windows is CPU-only, which is what we want here (no CUDA
+# needed for deployment — training is the GPU job, in the rlbot310 env).
+torch
+numpy<3.0
+# rlgym-compat 2.x (RLBot v5 + V1GameState) is NOT on PyPI (PyPI tops out at
+# 1.1.0, which is RLBot v4). Install from GitHub, pinned for reproducibility.
+rlgym-compat @ git+https://github.com/RLGym/rlgym-compat.git@f9855a69ff345832629a509b6cef27866fc6e5bf

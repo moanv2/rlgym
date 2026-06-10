@@ -1,0 +1,32 @@
+#:schema https://rlbot.org/schemas/agent.json
+[settings]
+# The name that will be displayed in game.
+name = "MoanV2 RLBot"
+# Path to the loadout config, relative to this file.
+loadout_file = "loadout.toml"
+# Working directory for the bot, relative to this file. Empty = this file's dir (src/).
+root_dir = ""
+# Command RLBot runs to start the bot on Windows. Uses the project venv created
+# by scripts/setup.ps1 (../venv from src/). Use "python bot.py" instead if you
+# want RLBot to use whatever python is already on PATH.
+run_command = "..\\venv\\Scripts\\python bot.py"
+# Command RLBot runs to start the bot on Linux/macOS (dev/CI parity).
+run_command_linux = "../venv/bin/python bot.py"
+# UNIQUE identifier for this bot. MUST match the string passed to MyBot(...) in bot.py.
+agent_id = "moanv2/myrlbot"
+# Path to a logo image shown in the GUI (optional).
+logo_file = ""
+# Set true only if you later turn this into a hivemind (one process, many drones).
+# hivemind = true
+
+[details]
+description = """
+1v1 deployment bot for the RL final. Always-Towards-Ball baseline with a
+pluggable strategy/learned-policy seam (src/policy).
+"""
+fun_fact = "Shares physics constants with the RLGym training pipeline in the same repo."
+source_link = "https://github.com/moanv2/rlgym"
+developer = "moanv2 / Diego"
+language = "Python"
+# ALL POSSIBLE TAGS: 1v1, teamplay, goalie, hoops, dropshot, snow-day, rumble, spike-rush, heatseeker, memebot
+tags = ["1v1"]

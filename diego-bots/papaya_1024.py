@@ -1,23 +1,28 @@
 """
-Simple Rocket League 1v1 PPO bot. Educational scaffold.
+papaya_1024 — 1v1 PPO bot, LARGE 1024x3 architecture variant. Educational scaffold.
 
-This script bypasses the YAML config system on purpose. Every knob you can turn
-when training a bot lives directly in this file with a comment explaining what
-it does, why it matters, and what happens if you change it.
+Sibling of simple_bot.py. Identical reward stack, obs, action parser, state
+setter, and PPO knobs — the ONLY changed variable is network width: 1024x3
+here vs 512x3 in simple_bot.py. Keeping everything else fixed makes this a
+clean A/B on architecture capacity.
+
+This is a FRESH-FROM-SCRATCH run, not a warm-start. It does NOT inherit the
+512x3 bot's learned strategy: that strategy lives entirely in the trained
+weights, and a 512x3 checkpoint cannot be loaded into a 1024x3 net
+(rlgym_ppo's PPOLearner.load_from() calls load_state_dict() with strict=True,
+ppo_learner.py:260, so mismatched layer shapes raise a RuntimeError). What it
+DOES share with the 512 run is the training recipe — the reward function, obs,
+actions, and state setter — i.e. the same incentives, so it will rediscover a
+similar strategy on its own, but from random init. It auto-resumes only from
+its OWN checkpoints once it has saved some.
 
 Run from the project root with the rlbot310 conda env activated:
 
     conda activate rlbot310
-    python diego-bots/simple_bot.py
-
-Expected runtime on the RTX 4070 Laptop: about 10 to 20 minutes for the
-500k timestep limit set below. The bot will not be good at the end of this,
-but you will SEE policy reward trending upward in the console reports, which
-means the PPO update loop is working and the bot is learning to move toward
-the ball.
+    python diego-bots/papaya_1024.py
 
 Output:
-    diego-bots/checkpoints/simple_bot/<timestep>/   trained policy snapshots
+    diego-bots/checkpoints/papaya_1024/<run>/<timestep>/   policy snapshots
 """
 
 # --------------------------------------------------------------------------
@@ -37,13 +42,14 @@ Output:
 # scratch in a fresh folder. The previous experiment's checkpoints stay
 # untouched as comparison baselines.
 # --------------------------------------------------------------------------
-# Fresh experiment: Nexto-style 10-component reward + 4 custom hardcoded
-# rewards (Supersonic, AerialBall, BigBoostProximity, BackboardDefense)
-# + 30/70 kickoff-vs-random state mix + medium 512x3 architecture.
+# papaya_1024: same v3 reward stack as nexto_plus_kickoff_512, but LARGE
+# 1024x3 architecture (4x the params of 512x3). Architecture is the only
+# changed variable vs the 512 run, so the two overlay as a clean A/B in wandb.
 # Previous experiments are preserved in their own folders for comparison:
-#   - nexto_rewards/        : 5→10 component reward, 256x3, reached 130M
-#   - nexto_plus_kickoff/    : 14-component reward, 256x3, reached 17.6M
-EXPERIMENT_NAME = "nexto_plus_kickoff_512"
+#   - nexto_rewards/         : 5→10 component reward, 256x3, reached 130M
+#   - nexto_plus_kickoff/     : 14-component reward, 256x3, reached 17.6M
+#   - nexto_plus_kickoff_512/ : v3 reward, 512x3, reached 1.18B (current best)
+EXPERIMENT_NAME = "papaya_1024"
 
 # --------------------------------------------------------------------------
 # wandb display-name convention.
@@ -58,7 +64,7 @@ EXPERIMENT_NAME = "nexto_plus_kickoff_512"
 # (baseline_26M_r2) from before this auto-saving system existed, so the next
 # auto-saved session should be r3. Bump this once if you ever need to.
 # --------------------------------------------------------------------------
-WANDB_NAME_PREFIX = "baseline"
+WANDB_NAME_PREFIX = "papaya1024"
 STARTING_RUN_NUMBER = 3
 
 # --------------------------------------------------------------------------
@@ -91,11 +97,15 @@ from rlgym_ppo import Learner
 # build_env(). The previously-inlined CombinedReward + individual reward
 # imports moved into src/rlbot/rewards/nexto_style.py.
 
-# DefaultObs converts the raw game state into the fixed length numeric
-# vector that we feed into the policy network. Positions, velocities, ball
-# state, boost amount, and so on. The shape of this vector is fixed at
-# training time; changing the obs builder means starting a fresh bot.
-from rlgym_sim.utils.obs_builders import DefaultObs
+# AdvancedObs converts the raw game state into the fixed-length numeric vector
+# we feed the policy. It is the richer obs: on top of DefaultObs's absolute
+# positions/velocities it adds car->ball and car->opponent RELATIVE position &
+# velocity, giving the policy directly usable spatial relationships. 1v1 obs
+# size is 107 (vs DefaultObs's 89). The shape is fixed at training time;
+# changing the obs builder means a fresh bot (papaya is fresh, so that's fine).
+# This is a custom rlgym_sim-compatible builder — rlgym_tools 2.6.4 has no
+# drop-in AdvancedObs for the rlgym_sim API. See src/rlbot/obs/advanced_obs.py.
+from rlbot.obs.advanced_obs import AdvancedObs
 
 # RandomState decides where everything spawns at the start of each episode.
 # Random positions plus random velocities expose the bot to far more
@@ -168,9 +178,11 @@ def build_env():
         BackboardDefenseReward,
         BallAwayFromOwnGoalReward,
         BigBoostProximityReward,
+        BoostReserveReward,
         DribbleToGoalReward,
+        FlickReward,
         KickoffReward,
-        MaintainSpeedReward,
+        RecoveryReward,
         SupersonicReward,
     )
     from rlbot.rewards.nexto_style import build_nexto_style_reward
@@ -178,7 +190,14 @@ def build_env():
 
     # Build the Nexto base WITHOUT its own zero-sum wrapper so we can stack
     # additional components alongside it and wrap the whole thing once at the end.
-    nexto_base = build_nexto_style_reward(zero_sum=False)
+    # v5: lower the ball-chase signals (curb overcommitting — bot was constantly
+    # diving at the ball) and raise SaveBoost (conserve boost for recoveries).
+    nexto_base = build_nexto_style_reward(
+        zero_sum=False,
+        velocity_player_to_ball_weight=0.3,   # was 0.6 default
+        liu_distance_player_to_ball_weight=0.3,  # was 0.7 default
+        save_boost_weight=0.3,                # was 0.05 default
+    )
 
     # Tuned reward stack (v3). Changes from v2, based on watching the 635M bot
     # play in rlviser (65% win rate vs Marian's 1.35B bot):
@@ -199,46 +218,78 @@ def build_env():
     #   - SupersonicReward (weight 0.05 → 0.1): reinforce playing at pace.
     #   - boost_pickup event bumped 0.3 → 0.6 in nexto_style.py (each pad grab is
     #     now a clearer positive event).
+    # v4 (papaya): add two mechanics the stack was missing —
+    #   - RecoveryReward (weight 0.15): orient upright + toward motion while
+    #     airborne OUTSIDE an aerial play, so the bot stops tumbling after
+    #     bumps/clears/challenges and lands control-ready. Continuous but
+    #     air-gated; small weight so it just polishes recoveries.
+    #   - FlickReward (weight 1.0): launching the ball up+forward toward the net
+    #     out of a dribble — the 1v1 finishing mechanic. Sparse event reward, so
+    #     a meaningful weight. Paired with DribbleSetupState below so the bot is
+    #     in carries often enough to learn it.
+    # These are reinforced by the new aerial/dribble state-setters (see below):
+    # AerialTouchReward and FlickReward barely fire under random spawns alone.
+    # v5 (after watching papaya @ 828M play 1v1 + entropy stuck at ~4.0):
+    # the speed rewards were making it dump all its boost and the dense
+    # ball-chase made it overcommit. Fix = REDUCE the conflicting signals, not
+    # add more:
+    #   - MaintainSpeedReward: REMOVED (it was the "always floor it" driver).
+    #   - SupersonicReward: 0.25 → 0.03 (a whisper of pace, no longer a boost sink).
+    #   - SaveBoost: 0.05 → 0.3 (inside nexto base) + BoostReserveReward (NEW 0.4):
+    #     keep boost in reserve when not in an active play, ready to recover/save.
+    #   - ball-chase (velocity/liu player-to-ball): 0.6/0.7 → 0.3/0.3 in nexto base
+    #     to curb overcommitting.
+    #   - BackboardDefenseReward: 0.45 → 0.7 (reward holding goal-side instead).
+    #   - AerialTouchReward: 1.5 → 2.0 (+ aerial drill state bumped below) to push
+    #     it to actually go up.
     combined = CombinedReward(
         reward_functions=(
-            nexto_base,                   # whole 10-component Nexto stack as one unit
+            nexto_base,                   # whole Nexto stack as one unit (v5: ball-chase down, save-boost up)
             SupersonicReward(),
             AerialBallReward(),
             AerialTouchReward(),          # real aerial contact
             BigBoostProximityReward(),    # ball-distance aware
             BackboardDefenseReward(),
             BallAwayFromOwnGoalReward(),  # anti-own-goal
-            DribbleToGoalReward(),        # NEW v3 — dribble toward the enemy net
-            KickoffReward(),              # NEW v3 — win the kickoff
-            MaintainSpeedReward(),        # NEW v3 — keep pace for fast rotations
+            DribbleToGoalReward(),        # v3 — dribble toward the enemy net
+            KickoffReward(),              # v3 — win the kickoff
+            RecoveryReward(),             # v4 — clean recoveries / land wheels-down
+            FlickReward(),                # v4 — flick the ball off a dribble
+            BoostReserveReward(),         # NEW v5 — keep boost for recoveries/saves
         ),
         reward_weights=(
-            1.0,    # nexto base counts as 1x (already weighted internally to ~12 max)
-            0.1,    # supersonic: v3 0.05→0.1, reinforce pace
-            0.5,    # aerial position: sparse but valuable when it fires
-            1.5,    # aerial TOUCH: strong reward for actual aerial hits
-            0.8,    # big-boost proximity: v3 0.5→0.8, stronger pull to grab pads
-            0.4,    # backboard defense: only fires in defensive scenarios
+            1.0,    # nexto base counts as 1x (already weighted internally)
+            0.03,   # supersonic: v5 0.25→0.03, stop draining boost for raw speed
+            0.6,    # aerial position: sparse but valuable when it fires
+            2.0,    # aerial TOUCH: v5 1.5→2.0, push it to actually go up
+            0.8,    # big-boost proximity: stronger pull to grab pads when low
+            0.7,    # backboard defense: v5 0.45→0.7, hold goal-side vs overcommit
             0.6,    # ball-away-from-own-goal: anti own-goal under pressure
-            0.15,   # dribble-to-goal: small directional nudge toward enemy net
-            0.3,    # kickoff: commit hard off kickoff
-            0.1,    # maintain-speed: continuous pace nudge, kept small
+            0.20,   # dribble-to-goal: small directional nudge toward enemy net
+            0.35,   # kickoff: commit hard off kickoff
+            0.15,   # recovery: polish signal, air-gated, kept small
+            1.0,    # flick: sparse finishing-mechanic event, meaningful weight
+            0.4,    # NEW v5 boost-reserve: conserve boost when not in an active play
         ),
     )
     reward_fn = ZeroSumReward(combined, team_spirit=0.0, opp_scale=1.0)
 
-    # State setter: 70% wild RandomState (broad exploration of states the
-    # bot might face mid-game) + 30% RandomKickoffSetter (forces practice
-    # of the 5 canonical kickoff positions using hardcoded coordinates from
-    # rl_constants.py). This is the curriculum-learning side of the new
-    # experiment — instead of only seeing chaos, the bot also does dedicated
-    # kickoff drills, which is the single highest-leverage situation in 1v1.
+    # State setter (v5): same curriculum mix, but MORE aerial reps and LESS pure
+    # chaos (the wild RandomState was spawning the "weird scenarios" you saw).
+    #   - RandomState        0.35 — broad coverage (v5 0.45→0.35, less unrealistic chaos)
+    #   - RandomKickoffSetter 0.25 — the 5 canonical kickoffs (paired w/ KickoffReward)
+    #   - AerialSetupState    0.25 — high ball + grounded cars w/ boost (v5 0.15→0.25,
+    #                                more reps so it actually learns to aerial)
+    #   - DribbleSetupState   0.15 — one car carrying the ball toward the net, so it
+    #                                practices dribble control + FlickReward
+    # Weights sum to 1.0.
     from rlbot.state_setters.kickoff_scenarios import RandomKickoffSetter
+    from rlbot.state_setters.mechanic_scenarios import (
+        AerialSetupState,
+        DribbleSetupState,
+    )
     from rlbot.state_setters.weighted_sample_setter import WeightedSampleSetter
 
-    # v3: kickoff drills bumped 0.30 → 0.40 (random 0.70 → 0.60). Kickoffs are a
-    # proven goal source and now also have a dedicated KickoffReward, so we give
-    # the bot more reps at the 5 canonical kickoff positions.
     state_setter = WeightedSampleSetter(
         state_setters=[
             RandomState(
@@ -247,8 +298,10 @@ def build_env():
                 cars_on_ground=False,
             ),
             RandomKickoffSetter(),
+            AerialSetupState(),
+            DribbleSetupState(),
         ],
-        weights=[0.6, 0.4],
+        weights=[0.35, 0.25, 0.25, 0.15],
     )
 
     # Build and return the environment.
@@ -257,7 +310,7 @@ def build_env():
         team_size=1,                 # 1v1 final, so one car per side
         spawn_opponents=True,        # spawn a second car for self play
         reward_fn=reward_fn,
-        obs_builder=DefaultObs(),
+        obs_builder=AdvancedObs(),
         state_setter=state_setter,
         terminal_conditions=[
             GoalScoredCondition(),
@@ -373,41 +426,44 @@ def _capture_config() -> dict:
         "min_inference_size": 180,
         "ppo_epochs": 2,
         "ppo_ent_coef": 0.01,
-        "policy_layer_sizes": [512, 512, 512],
-        "critic_layer_sizes": [512, 512, 512],
+        "policy_layer_sizes": [1024, 1024, 1024],
+        "critic_layer_sizes": [1024, 1024, 1024],
         "standardize_returns": True,
         "standardize_obs": False,
         "save_every_ts": 100_000,
         "reward_function": "ZeroSumReward(CombinedReward(nexto_base [unwrapped] + custom_rl rewards))",
         "reward_components": [
-            "nexto_base (10-component Nexto-style, weight 1.0)",
-            "SupersonicReward (weight 0.1) [v3: 0.05→0.1]",
-            "AerialBallReward (weight 0.5)",
-            "AerialTouchReward (weight 1.5) [v2: real aerial contact]",
-            "BigBoostProximityReward (weight 0.8) [v3: 0.5→0.8, threshold 0.30→0.40]",
-            "BackboardDefenseReward (weight 0.4)",
-            "BallAwayFromOwnGoalReward (weight 0.6) [v2: anti own-goal]",
-            "DribbleToGoalReward (weight 0.15) [v3: dribble toward enemy net]",
-            "KickoffReward (weight 0.3) [v3: win the kickoff]",
-            "MaintainSpeedReward (weight 0.1) [v3: keep pace for rotations]",
+            "nexto_base (Nexto-style, weight 1.0) [v5: player-to-ball 0.6/0.7→0.3/0.3, save_boost 0.05→0.3]",
+            "SupersonicReward (weight 0.03) [v5: 0.25→0.03, stop draining boost]",
+            "AerialBallReward (weight 0.6)",
+            "AerialTouchReward (weight 2.0) [v5: 1.5→2.0]",
+            "BigBoostProximityReward (weight 0.8)",
+            "BackboardDefenseReward (weight 0.7) [v5: 0.45→0.7, hold goal-side]",
+            "BallAwayFromOwnGoalReward (weight 0.6)",
+            "DribbleToGoalReward (weight 0.20)",
+            "KickoffReward (weight 0.35)",
+            "RecoveryReward (weight 0.15) [v4]",
+            "FlickReward (weight 1.0) [v4]",
+            "BoostReserveReward (weight 0.4) [v5: keep boost for recoveries/saves]",
+            "MaintainSpeedReward REMOVED [v5: was the boost-dumping driver]",
             "ZeroSumReward wrapping (team_spirit=0, opp_scale=1)",
         ],
-        "reward_version": "v3 (tuned after 635M: +dribble-to-goal, +kickoff, +maintain-speed, boost economy bumped)",
+        "reward_version": "v5 (papaya: boost conservation + anti-overcommit; -maintainspeed, supersonic↓, saveboost↑, +boostreserve, ballchase↓, backboard↑, aerialtouch↑, aerial drills↑)",
         "nexto_base_components": [
-            "VelocityPlayerToBallReward (weight 0.6)",
-            "LiuDistancePlayerToBallReward (weight 0.7)",
+            "VelocityPlayerToBallReward (weight 0.3) [v5: 0.6→0.3, anti-overcommit]",
+            "LiuDistancePlayerToBallReward (weight 0.3) [v5: 0.7→0.3, anti-overcommit]",
             "VelocityBallToGoalReward (weight 2.0)",
             "LiuDistanceBallToGoalReward (weight 1.0)",
             "AlignBallGoal(defense=1, offense=1) (weight 0.4)",
             "BallYCoordinateReward (weight 0.5)",
             "FaceBallReward (weight 0.3)",
             "TouchBallReward (weight 5.0)",
-            "SaveBoostReward (weight 0.05)",
+            "SaveBoostReward (weight 0.3) [v5: 0.05→0.3, conserve boost]",
             "EventReward(goal=10, concede=-10, shot=1.5, save=3, touch=0.05, demo=0.5, boost_pickup=0.6) (weight 12.0)",
         ],
-        "obs_builder": "DefaultObs",
+        "obs_builder": "AdvancedObs (107-dim, custom rlgym_sim-compatible; rel pos/vel to ball & opponent)",
         "action_parser": "LookupAction (90 discrete actions)",
-        "state_setter": "WeightedSampleSetter(RandomState 0.6 + RandomKickoffSetter 0.4)",
+        "state_setter": "WeightedSampleSetter(RandomState 0.35 + RandomKickoffSetter 0.25 + AerialSetupState 0.25 + DribbleSetupState 0.15)",
     }
 
 
@@ -661,14 +717,14 @@ if __name__ == "__main__":
         # this off. Custom observation builders may want it on.
         standardize_obs=False,
 
-        # Neural network architecture: medium (512x3), matching Marian's 1.35B
-        # bot. Used because we now have a 14-component reward signal that
-        # gives the bigger network meaningful gradient. ~15-20% slower per
-        # timestep vs 256x3 but higher skill ceiling. The previous
-        # nexto_plus_kickoff experiment (256x3, 17.6M) stays preserved in its
-        # own folder as a comparison baseline.
-        policy_layer_sizes=(512, 512, 512),
-        critic_layer_sizes=(512, 512, 512),
+        # Neural network architecture: LARGE (1024x3), 4x the params of the
+        # 512x3 nexto_plus_kickoff_512 run. Higher skill ceiling at the cost of
+        # a slower GPU forward pass per inference batch (rollout throughput is
+        # CPU-bound on n_proc so it's only mildly affected). Trained fresh from
+        # scratch — a 512x3 checkpoint can't be loaded into this wider net
+        # (strict load_state_dict shape mismatch).
+        policy_layer_sizes=(1024, 1024, 1024),
+        critic_layer_sizes=(1024, 1024, 1024),
 
         # Total CUMULATIVE environment steps allowed before the Learner exits.
         # This is the sum across all training sessions, not just this one.

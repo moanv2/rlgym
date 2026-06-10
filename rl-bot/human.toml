@@ -1,0 +1,39 @@
+#:schema https://rlbot.org/schemas/match.json
+# Human match config: MoanV2 RLBot (Blue, the trained 1B-step policy) vs YOU,
+# a human player (Orange), 1v1. Run with:  python run.py human.toml
+# Grab a controller/keyboard — RLBot hands the Orange car to your input device.
+[rlbot]
+launcher = "Steam"
+auto_start_agents = true
+wait_for_agents = true
+
+[match]
+game_mode = "Soccer"
+game_map_upk = "Stadium_P"
+existing_match_behavior = "Restart"
+skip_replays = false
+start_without_countdown = false
+enable_rendering = false
+enable_state_setting = true
+auto_save_replay = false
+freeplay = false
+
+[mutators]
+match_length = "FiveMinutes"
+max_score = "Unlimited"
+game_speed = "Default"
+boost_amount = "NormalBoost"
+gravity = "Default"
+demolish = "Default"
+respawn_time = "ThreeSeconds"
+
+# --- My bot (Blue): the trained learned controller -------------------------
+[[cars]]
+config_file = "src/bot.toml"
+team = "Blue"
+auto_start = true
+
+# --- Human opponent (Orange): you, with a controller/keyboard --------------
+[[cars]]
+type = "Human"
+team = "Orange"

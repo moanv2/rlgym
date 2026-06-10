@@ -1,0 +1,19 @@
+# Convenience wrapper around the validation image (see Dockerfile header).
+# This is NOT a gameplay runtime — v5 matches require Windows + Rocket League.
+#
+#   docker compose run --rm validate     # run the offline checks
+#   docker compose build                 # rebuild after dep changes
+services:
+  validate:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: rlbotv5-validate
+    # Mount the source read-only so you can re-run checks on local edits
+    # without rebuilding the image.
+    volumes:
+      - ./src:/app/src:ro
+      - ./rlbot.toml:/app/rlbot.toml:ro
+      - ./dev.toml:/app/dev.toml:ro
+      - ./validate.py:/app/validate.py:ro
+    command: ["python", "validate.py"]

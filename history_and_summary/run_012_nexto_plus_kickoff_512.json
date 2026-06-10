@@ -1,0 +1,67 @@
+{
+  "run_number": 12,
+  "experiment_name": "nexto_plus_kickoff_512",
+  "wandb_run_name": "nexto_plus_kickoff_512_308M",
+  "wandb_final_name": "baseline_323M_r12",
+  "stop_reason": "exception: ConnectionResetError: [WinError 64] The specified network name is no longer available",
+  "started_at": "2026-05-28T17:34:14.327176+00:00",
+  "ended_at": "2026-05-28T18:08:26.611874+00:00",
+  "duration_seconds": 2052.3,
+  "wandb_run_id": "0024jyjw",
+  "wandb_run_url": "https://wandb.ai/diego08-ie-university/rlgym-finalproject/runs/0024jyjw",
+  "wandb_entity": "diego08-ie-university",
+  "wandb_project": "rlgym-finalproject",
+  "cumulative_timesteps_end": 322515868,
+  "final_metrics": {},
+  "config": {
+    "experiment_name": "nexto_plus_kickoff_512",
+    "n_proc": 16,
+    "ppo_batch_size": 100000,
+    "ts_per_iteration": 100000,
+    "ppo_minibatch_size": 100000,
+    "exp_buffer_size": 300000,
+    "min_inference_size": 180,
+    "ppo_epochs": 2,
+    "ppo_ent_coef": 0.01,
+    "policy_layer_sizes": [
+      512,
+      512,
+      512
+    ],
+    "critic_layer_sizes": [
+      512,
+      512,
+      512
+    ],
+    "standardize_returns": true,
+    "standardize_obs": false,
+    "save_every_ts": 100000,
+    "reward_function": "ZeroSumReward(CombinedReward(nexto_base [unwrapped] + custom_rl rewards))",
+    "reward_components": [
+      "nexto_base (10-component Nexto-style, weight 1.0)",
+      "SupersonicReward (weight 0.05)",
+      "AerialBallReward (weight 0.5)",
+      "AerialTouchReward (weight 1.5) [v2: real aerial contact]",
+      "BigBoostProximityReward (weight 0.5) [v2: ball-distance aware]",
+      "BackboardDefenseReward (weight 0.4)",
+      "BallAwayFromOwnGoalReward (weight 0.6) [v2: anti own-goal]",
+      "ZeroSumReward wrapping (team_spirit=0, opp_scale=1)"
+    ],
+    "reward_version": "v2 (tuned after 202M: +aerial touch, ball-distance boost, anti-own-goal)",
+    "nexto_base_components": [
+      "VelocityPlayerToBallReward (weight 0.6)",
+      "LiuDistancePlayerToBallReward (weight 0.7)",
+      "VelocityBallToGoalReward (weight 2.0)",
+      "LiuDistanceBallToGoalReward (weight 1.0)",
+      "AlignBallGoal(defense=1, offense=1) (weight 0.4)",
+      "BallYCoordinateReward (weight 0.5)",
+      "FaceBallReward (weight 0.3)",
+      "TouchBallReward (weight 5.0)",
+      "SaveBoostReward (weight 0.05)",
+      "EventReward(goal=10, concede=-10, shot=1.5, save=3, touch=0.05, demo=0.5, boost_pickup=0.3) (weight 12.0)"
+    ],
+    "obs_builder": "DefaultObs",
+    "action_parser": "LookupAction (90 discrete actions)",
+    "state_setter": "WeightedSampleSetter(RandomState 0.7 + RandomKickoffSetter 0.3)"
+  }
+}

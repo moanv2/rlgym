@@ -1,0 +1,52 @@
+{
+    "cumulative_timesteps": 1341669252,
+    "cumulative_model_updates": 80394,
+    "policy_average_reward": 7.472094660435052,
+    "epoch": 13404,
+    "ts_since_last_save": 100004,
+    "reward_running_stats": {
+        "mean": [
+            0.3264366604536809
+        ],
+        "var": [
+            96981589320.01263
+        ],
+        "shape": [
+            1
+        ],
+        "count": 2012400
+    },
+    "wandb_run_id": "q6y87w5x",
+    "wandb_project": "rlgym-finalproject",
+    "wandb_entity": "diego08-ie-university",
+    "wandb_group": "simple_bot",
+    "wandb_config": {
+        "n_proc": 16,
+        "min_inference_size": 180,
+        "timestep_limit": 2000000000,
+        "exp_buffer_size": 300000,
+        "ts_per_iteration": 100000,
+        "standardize_returns": true,
+        "standardize_obs": false,
+        "policy_layer_sizes": [
+            1024,
+            1024,
+            1024
+        ],
+        "critic_layer_sizes": [
+            1024,
+            1024,
+            1024
+        ],
+        "ppo_epochs": 2,
+        "ppo_batch_size": 100000,
+        "ppo_minibatch_size": 100000,
+        "ppo_ent_coef": 0.01,
+        "ppo_clip_range": 0.2,
+        "gae_lambda": 0.95,
+        "gae_gamma": 0.99,
+        "policy_lr": 0.0003,
+        "critic_lr": 0.0003,
+        "shm_buffer_size": 8192
+    }
+}
