@@ -140,7 +140,22 @@ def main():
     leaderboard_png(data, lb_png)
     heatmap_png(labels, wr, hm_png)
 
-    champ = labels[0]
+    final = data.get("final")
+    champ = (final or {}).get("champion") or labels[0]
+    final_card = ""
+    if final:
+        lo, hi = final.get("wilson95_low"), final.get("wilson95_high")
+        ci = f"95% CI [{lo:.1%}, {hi:.1%}]" if lo is not None else ""
+        verdict = (
+            '<span style="color:#7CFC9A;font-weight:700">statistically decisive — the CI clears 50%</span>'
+            if final.get("decisive")
+            else '<span style="color:#f6d365;font-weight:700">inseparable at 95% — Elo order kept</span>'
+        )
+        final_card = f"""<div class="card"><h2>⚔️ Championship Final <span class="sub" style="font-size:14px">({final["games"]} games, both sides)</span></h2>
+<p style="font-size:20px;margin:.3em 0"><b>{final["a"]}</b> {final["a_wins"]} - {final["b_wins"]} <b>{final["b"]}</b> <span class="sub">(draws {final["draws"]})</span></p>
+<p>{final["a"]} decisive win rate <b>{final["a_winrate_decisive"]:.1%}</b> {ci} → {verdict}</p>
+<p class="sub">The round-robin Elo seeds the final; the final decides 1st/2nd.</p></div>"""
+
     vids = ""
     for v in a.videos:
         if os.path.isfile(v):
@@ -158,6 +173,7 @@ table.mat th,table.mat td{{padding:6px 10px;text-align:center;border:1px solid #
 <h1>🏆 1v1 Bot Tournament</h1>
 <div class="sub">Bradley-Terry Elo · double round-robin (both sides) · deterministic play · {len(labels)} entrants</div>
 <div class="card"><h2>Champion: <span class="champ">{champ}</span></h2></div>
+{final_card}
 <div class="card"><h2>Standings</h2><img src="data:image/png;base64,{b64(lb_png)}"></div>
 <div class="card"><h2>Head-to-head win %</h2>{html_matrix(labels, wr)}<p class="sub">row's decisive win rate vs column.</p>
 <img src="data:image/png;base64,{b64(hm_png)}"></div>

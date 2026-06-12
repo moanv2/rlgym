@@ -143,6 +143,48 @@ def play(env, lut, blue, blue_obs, orange, orange_obs, games, deterministic):
     return bw, ow, dr
 
 
+def wilson(wins, n, z=1.96):
+    """Wilson score 95% CI for a win proportion wins/n. Returns (low, high); (None, None) if n=0.
+
+    Used to make rankings statistically defensible: a result is only called decisive when
+    the whole interval clears 50%, not when a small-sample point estimate happens to.
+    """
+    if n == 0:
+        return None, None
+    p = wins / n
+    denom = 1.0 + z * z / n
+    center = (p + z * z / (2 * n)) / denom
+    half = z * math.sqrt(p * (1 - p) / n + z * z / (4 * n * n)) / denom
+    return center - half, center + half
+
+
+def play_matchup(env, lut, bots, x, y, games_per_side, deterministic):
+    """Play x vs y for games_per_side on EACH side (cancels kickoff/side bias).
+    Returns (x_wins, y_wins, draws)."""
+    bx, by = bots[x], bots[y]
+    b1, o1, d1 = play(
+        env,
+        lut,
+        bx["policy"],
+        make_obs(bx["obs"]),
+        by["policy"],
+        make_obs(by["obs"]),
+        games_per_side,
+        deterministic,
+    )
+    b2, o2, d2 = play(
+        env,
+        lut,
+        by["policy"],
+        make_obs(by["obs"]),
+        bx["policy"],
+        make_obs(bx["obs"]),
+        games_per_side,
+        deterministic,
+    )
+    return b1 + o2, o1 + b2, d1 + d2
+
+
 def bradley_terry_elo(labels, wins, games):
     s = {b: 1.0 for b in labels}
     W = {b: sum(wins.get((b, o), 0) for o in labels) for b in labels}
@@ -172,6 +214,13 @@ def main():
     )
     p.add_argument("--max-seconds", type=int, default=60)
     p.add_argument("--deterministic", action="store_true")
+    p.add_argument(
+        "--final-games",
+        type=int,
+        default=200,
+        help="championship final: games PER SIDE between the Elo top 2 (default 200 = 400 total, "
+        "enough for a ~5pt-resolution Wilson CI). 0 disables the final.",
+    )
     p.add_argument("--out", default="tournament_results.json")
     a = p.parse_args()
 
@@ -198,31 +247,7 @@ def main():
     record = {b: {"W": 0, "L": 0, "D": 0} for b in labels}
     wins, games, matches = {}, {}, []
     for x, y in itertools.combinations(labels, 2):
-        bx, by = bots[x], bots[y]
-        # both sides to cancel kickoff/side bias
-        b1, o1, d1 = play(
-            env,
-            lut,
-            bx["policy"],
-            make_obs(bx["obs"]),
-            by["policy"],
-            make_obs(by["obs"]),
-            a.games,
-            a.deterministic,
-        )
-        b2, o2, d2 = play(
-            env,
-            lut,
-            by["policy"],
-            make_obs(by["obs"]),
-            bx["policy"],
-            make_obs(bx["obs"]),
-            a.games,
-            a.deterministic,
-        )
-        xw = b1 + o2
-        yw = o1 + b2
-        dd = d1 + d2
+        xw, yw, dd = play_matchup(env, lut, bots, x, y, a.games, a.deterministic)
         wins[(x, y)] = xw
         wins[(y, x)] = yw
         games[(x, y)] = xw + yw
@@ -233,19 +258,70 @@ def main():
         record[y]["W"] += yw
         record[y]["L"] += xw
         record[y]["D"] += dd
-        matches.append({"a": x, "b": y, "a_wins": xw, "b_wins": yw, "draws": dd})
+        lo, hi = wilson(xw, xw + yw)
+        matches.append(
+            {
+                "a": x,
+                "b": y,
+                "a_wins": xw,
+                "b_wins": yw,
+                "draws": dd,
+                "wilson95_low": round(lo, 3) if lo is not None else None,
+                "wilson95_high": round(hi, 3) if hi is not None else None,
+            }
+        )
         print(f"  {x} {xw} - {yw} {y}  (draws {dd})", flush=True)
 
     elo = bradley_terry_elo(labels, wins, games)
     standings = sorted(labels, key=lambda b: elo[b], reverse=True)
+
+    # --- CHAMPIONSHIP FINAL: a big head-to-head between the Elo top 2 so the #1 spot is
+    # statistically defensible, not a small-sample coin flip. The Elo round-robin SEEDS the
+    # final; the final DECIDES 1st/2nd. Verdict rule: only the Wilson 95% CI clearing 50%
+    # (either way) overturns or confirms decisively — otherwise the Elo order is kept and
+    # the result is reported as statistically inseparable.
+    final = None
+    if a.final_games > 0 and len(labels) >= 2:
+        s1, s2 = standings[0], standings[1]
+        print(f"\n=== CHAMPIONSHIP FINAL: {s1} vs {s2} ({a.final_games}/side) ===", flush=True)
+        fw, fl, fd = play_matchup(env, lut, bots, s1, s2, a.final_games, a.deterministic)
+        dec = fw + fl
+        p1 = fw / dec if dec else None
+        lo, hi = wilson(fw, dec)
+        if lo is not None and lo > 0.5:
+            champion, decisive = s1, True
+        elif hi is not None and hi < 0.5:
+            champion, decisive = s2, True
+            standings[0], standings[1] = s2, s1  # the final overturns the seeding
+        else:
+            champion, decisive = s1, False  # inseparable -> keep Elo order
+        final = {
+            "a": s1,
+            "b": s2,
+            "a_wins": fw,
+            "b_wins": fl,
+            "draws": fd,
+            "games": 2 * a.final_games,
+            "a_winrate_decisive": round(p1, 3) if p1 is not None else None,
+            "wilson95_low": round(lo, 3) if lo is not None else None,
+            "wilson95_high": round(hi, 3) if hi is not None else None,
+            "decisive": decisive,
+            "champion": champion,
+        }
+        ci = f"[{lo:.1%}, {hi:.1%}]" if lo is not None else "n/a"
+        verdict = "DECISIVE (95% CI clears 50%)" if decisive else "inseparable at 95% -> Elo order kept"
+        print(f"  {s1} {fw} - {fl} {s2}  (draws {fd})", flush=True)
+        print(f"  {s1} decisive win rate {p1:.1%} {ci}  -> {verdict}", flush=True)
+        print(f"  CHAMPION: {champion}", flush=True)
+
     with open(a.out, "w", encoding="utf-8") as f:
         json.dump(
-            {"matches": matches, "record": record, "elo": elo, "standings": standings},
+            {"matches": matches, "record": record, "elo": elo, "standings": standings, "final": final},
             f,
             indent=2,
         )
 
-    print("\n=== STANDINGS (Elo) ===", flush=True)
+    print("\n=== STANDINGS (Elo seeds the final, the final decides 1st/2nd) ===", flush=True)
     for i, b in enumerate(standings, 1):
         r = record[b]
         print(f"  {i}. {b:<22} Elo {elo[b]}   W-L-D {r['W']}-{r['L']}-{r['D']}", flush=True)
