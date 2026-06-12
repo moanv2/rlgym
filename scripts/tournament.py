@@ -49,9 +49,11 @@ from rlbot.utils.config import load_config  # noqa: E402
 def make_obs(name):
     if name == "advanced":
         from rlgym_sim.utils.obs_builders import AdvancedObs
+
         return AdvancedObs()
     if name == "default":
         from rlgym_sim.utils.obs_builders import DefaultObs
+
         return DefaultObs()
     raise ValueError(f"Unsupported obs builder {name!r} (use 'advanced' or 'default', or add it here)")
 
@@ -87,9 +89,20 @@ def load_policy(policy_path, obs_dim, n_actions):
 
 def build_env(config_path, max_seconds):
     full = load_config(config_path).to_dict()
-    full["state_setter"] = {"name": "default"}
+    # Each game must start INDEPENDENTLY — a single fixed kickoff + deterministic bots would
+    # replay the same game every time. Mix real kickoffs with random on-ground states so the
+    # tournament samples a diverse, representative set of situations.
+    full["state_setter"] = {
+        "name": "weighted_sample",
+        "components": [
+            {"name": "default", "weight": 1.0},  # real kickoffs (watchable)
+            {"name": "random", "weight": 1.0, "cars_on_ground": True},  # varied on-ground states
+        ],
+    }
     full["terminal"]["timeout_seconds"] = int(max_seconds)
-    env_cfg = dict(full["env"]); env_cfg["team_size"] = 1; env_cfg["spawn_opponents"] = True
+    env_cfg = dict(full["env"])
+    env_cfg["team_size"] = 1
+    env_cfg["spawn_opponents"] = True
     return make_env_builder(env_cfg, full)()
 
 
@@ -99,21 +112,28 @@ def play(env, lut, blue, blue_obs, orange, orange_obs, games, deterministic):
     for _ in range(games):
         _, info = env.reset(return_info=True)
         state = info["state"]
-        blue_obs.reset(state); orange_obs.reset(state)
+        blue_obs.reset(state)
+        orange_obs.reset(state)
         prev = {0: np.zeros(8, dtype=np.float32), 1: np.zeros(8, dtype=np.float32)}
         done, result = False, 0.0
         while not done:
             acts = []
             for pl in state.players:
                 if pl.team_num == 0:
-                    ob = blue_obs.build_obs(pl, state, prev[0]); pol = blue
+                    ob = blue_obs.build_obs(pl, state, prev[0])
+                    pol = blue
                 else:
-                    ob = orange_obs.build_obs(pl, state, prev[1]); pol = orange
+                    ob = orange_obs.build_obs(pl, state, prev[1])
+                    pol = orange
                 with torch.no_grad():
-                    idx = int(pol.get_action(np.asarray(ob, dtype=np.float32), deterministic=deterministic)[0])
-                acts.append([idx]); prev[pl.team_num] = lut[idx]
+                    idx = int(
+                        pol.get_action(np.asarray(ob, dtype=np.float32), deterministic=deterministic)[0]
+                    )
+                acts.append([idx])
+                prev[pl.team_num] = lut[idx]
             _, _, done, info = env.step(np.array(acts))
-            state = info["state"]; result = info["result"]
+            state = info["state"]
+            result = info["result"]
         if result > 0:
             bw += 1
         elif result < 0:
@@ -124,69 +144,111 @@ def play(env, lut, blue, blue_obs, orange, orange_obs, games, deterministic):
 
 
 def bradley_terry_elo(labels, wins, games):
-    s = {l: 1.0 for l in labels}
-    W = {l: sum(wins.get((l, o), 0) for o in labels) for l in labels}
+    s = {b: 1.0 for b in labels}
+    W = {b: sum(wins.get((b, o), 0) for o in labels) for b in labels}
     for _ in range(1000):
         for i in labels:
-            denom = sum(games.get((i, j), 0) / (s[i] + s[j]) for j in labels if j != i and games.get((i, j), 0))
+            denom = sum(
+                games.get((i, j), 0) / (s[i] + s[j]) for j in labels if j != i and games.get((i, j), 0)
+            )
             if denom > 0 and W[i] > 0:
                 s[i] = W[i] / denom
         m = sum(s.values()) / len(s)
         for i in labels:
             s[i] /= m
-    return {l: round(400 * math.log10(max(s[l], 1e-9)) + 1000) for l in labels}
+    return {b: round(400 * math.log10(max(s[b], 1e-9)) + 1000) for b in labels}
 
 
 def main():
-    p = argparse.ArgumentParser(description="Round-robin bot tournament with Elo (handles mixed obs builders).")
+    p = argparse.ArgumentParser(
+        description="Round-robin bot tournament with Elo (handles mixed obs builders)."
+    )
     p.add_argument("--manifest", required=True, help="YAML listing the bots (see module docstring)")
     p.add_argument("--games", type=int, default=30, help="games per side per matchup")
-    p.add_argument("--config", default="configs/experiments/exp_003_long_run.yaml", help="env config (action space source)")
+    p.add_argument(
+        "--config",
+        default="configs/experiments/exp_003_long_run.yaml",
+        help="env config (action space source)",
+    )
     p.add_argument("--max-seconds", type=int, default=60)
     p.add_argument("--deterministic", action="store_true")
     p.add_argument("--out", default="tournament_results.json")
     a = p.parse_args()
 
-    entrants = yaml.safe_load(open(a.manifest, encoding="utf-8"))["bots"]
+    with open(a.manifest, encoding="utf-8") as f:
+        entrants = yaml.safe_load(f)["bots"]
     env = build_env(a.config, a.max_seconds)
     n_actions = int(env.action_space.n)
     from rlbot.actions.lookup_action import LookupAction
+
     lut = LookupAction().make_lookup_table()
 
     bots = {}
     for e in entrants:
         ob = make_obs(e["obs"])
         # measure this obs builder's dim from a reset
-        _, info = env.reset(return_info=True); st = info["state"]; ob.reset(st)
+        _, info = env.reset(return_info=True)
+        st = info["state"]
+        ob.reset(st)
         dim = int(np.asarray(ob.build_obs(st.players[0], st, np.zeros(8, dtype=np.float32))).shape[0])
         bots[e["label"]] = {"policy": load_policy(e["policy"], dim, n_actions), "obs": e["obs"]}
         print(f"loaded {e['label']:<22} obs={e['obs']} ({dim}-dim)", flush=True)
 
     labels = list(bots)
-    record = {l: {"W": 0, "L": 0, "D": 0} for l in labels}
+    record = {b: {"W": 0, "L": 0, "D": 0} for b in labels}
     wins, games, matches = {}, {}, []
     for x, y in itertools.combinations(labels, 2):
         bx, by = bots[x], bots[y]
         # both sides to cancel kickoff/side bias
-        b1, o1, d1 = play(env, lut, bx["policy"], make_obs(bx["obs"]), by["policy"], make_obs(by["obs"]), a.games, a.deterministic)
-        b2, o2, d2 = play(env, lut, by["policy"], make_obs(by["obs"]), bx["policy"], make_obs(bx["obs"]), a.games, a.deterministic)
-        xw = b1 + o2; yw = o1 + b2; dd = d1 + d2
-        wins[(x, y)] = xw; wins[(y, x)] = yw
-        games[(x, y)] = xw + yw; games[(y, x)] = xw + yw
-        record[x]["W"] += xw; record[x]["L"] += yw; record[x]["D"] += dd
-        record[y]["W"] += yw; record[y]["L"] += xw; record[y]["D"] += dd
+        b1, o1, d1 = play(
+            env,
+            lut,
+            bx["policy"],
+            make_obs(bx["obs"]),
+            by["policy"],
+            make_obs(by["obs"]),
+            a.games,
+            a.deterministic,
+        )
+        b2, o2, d2 = play(
+            env,
+            lut,
+            by["policy"],
+            make_obs(by["obs"]),
+            bx["policy"],
+            make_obs(bx["obs"]),
+            a.games,
+            a.deterministic,
+        )
+        xw = b1 + o2
+        yw = o1 + b2
+        dd = d1 + d2
+        wins[(x, y)] = xw
+        wins[(y, x)] = yw
+        games[(x, y)] = xw + yw
+        games[(y, x)] = xw + yw
+        record[x]["W"] += xw
+        record[x]["L"] += yw
+        record[x]["D"] += dd
+        record[y]["W"] += yw
+        record[y]["L"] += xw
+        record[y]["D"] += dd
         matches.append({"a": x, "b": y, "a_wins": xw, "b_wins": yw, "draws": dd})
         print(f"  {x} {xw} - {yw} {y}  (draws {dd})", flush=True)
 
     elo = bradley_terry_elo(labels, wins, games)
-    standings = sorted(labels, key=lambda l: elo[l], reverse=True)
-    json.dump({"matches": matches, "record": record, "elo": elo, "standings": standings},
-              open(a.out, "w", encoding="utf-8"), indent=2)
+    standings = sorted(labels, key=lambda b: elo[b], reverse=True)
+    with open(a.out, "w", encoding="utf-8") as f:
+        json.dump(
+            {"matches": matches, "record": record, "elo": elo, "standings": standings},
+            f,
+            indent=2,
+        )
 
     print("\n=== STANDINGS (Elo) ===", flush=True)
-    for i, l in enumerate(standings, 1):
-        r = record[l]
-        print(f"  {i}. {l:<22} Elo {elo[l]}   W-L-D {r['W']}-{r['L']}-{r['D']}", flush=True)
+    for i, b in enumerate(standings, 1):
+        r = record[b]
+        print(f"  {i}. {b:<22} Elo {elo[b]}   W-L-D {r['W']}-{r['L']}-{r['D']}", flush=True)
     print(f"\nwrote {a.out}", flush=True)
 
 
