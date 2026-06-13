@@ -65,7 +65,7 @@ learner:
 logging:
   wandb: true
   wandb_project: rlgym-finalproject
-  wandb_entity: diego08-ie-university   # set to your wandb entity (account or team slug)
+  wandb_entity: null   # set to your wandb entity (account or team slug); null uses the account from `wandb login`
   wandb_group: default
   wandb_run: null          # auto-generated
   sb3_metrics: false

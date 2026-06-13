@@ -24,7 +24,8 @@ class _EnvBuilder:
     """
 
     def __init__(self, team_size, spawn_opponents, tick_skip,
-                 obs_cfg, action_cfg, reward_cfg, state_cfg, term_cfg, log_cfg):
+                 obs_cfg, action_cfg, reward_cfg, state_cfg, term_cfg, log_cfg,
+                 self_play_cfg=None):
         self.team_size = team_size
         self.spawn_opponents = spawn_opponents
         self.tick_skip = tick_skip
@@ -34,6 +35,7 @@ class _EnvBuilder:
         self.state_cfg = state_cfg
         self.term_cfg = term_cfg
         self.log_cfg = log_cfg
+        self.self_play_cfg = self_play_cfg or {}
 
     def __call__(self):
         import rlgym_sim
@@ -48,6 +50,15 @@ class _EnvBuilder:
             state_setter=build_state_setter(self.state_cfg),
             action_parser=build_action_parser(self.action_cfg),
         )
+        if self.self_play_cfg.get("enabled", False) and self.spawn_opponents:
+            from rlbot.env.self_play_wrapper import SelfPlayWrapper
+
+            env = SelfPlayWrapper(
+                env,
+                pool_dir=self.self_play_cfg["pool_dir"],
+                latest_prob=float(self.self_play_cfg.get("latest_prob", 0.4)),
+                device=self.self_play_cfg.get("device", "cpu"),
+            )
         return env
 
 
@@ -63,4 +74,5 @@ def make_env_builder(env_cfg: dict[str, Any], full_cfg: dict[str, Any]) -> Calla
         state_cfg=full_cfg["state_setter"],
         term_cfg=full_cfg["terminal"],
         log_cfg=full_cfg.get("logging", {}),
+        self_play_cfg=full_cfg.get("self_play"),
     )

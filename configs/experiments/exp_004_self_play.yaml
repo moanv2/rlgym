@@ -1,0 +1,34 @@
+# Fictitious Self-Play experiment.
+# Orange car is driven by a randomly-sampled past checkpoint at each episode
+# reset, with `latest_prob` probability of falling back to current-policy
+# self-play. The opponent pool == the trainer's own checkpoint folder, so
+# the pool auto-populates as training progresses.
+#
+# Differentiator vs Diego (educational simple_bot, current-policy self-play
+# only) and Marian (stage-3 reward tuning, also current-policy self-play):
+# diverse past-self opponents prevent the policy from rock-paper-scissors
+# cycling against itself and produce a meaningfully stronger 1v1 bot.
+
+extends: ../default.yaml
+
+experiment_name: exp_004_self_play
+seed: 1337
+
+learner:
+  arch: small
+  ts_per_iteration: 100_000
+  # Smaller save interval so the opponent pool populates within the first
+  # few iterations rather than waiting 1M steps for the first snapshot.
+  save_every_ts: 200_000
+  timestep_limit: 100_000_000   # ~12 hours on a 4070 laptop at 15Hz
+
+self_play:
+  enabled: true
+  # Default: read snapshots straight out of checkpoints/<experiment>/.
+  # train.py resolves the {experiment_name} placeholder at runtime.
+  pool_dir: checkpoints/{experiment_name}
+  latest_prob: 0.4   # 60% of episodes use a past snapshot, 40% use current policy
+  device: cpu        # opponent inference on CPU keeps GPU free for the learner
+
+logging:
+  wandb_group: self_play

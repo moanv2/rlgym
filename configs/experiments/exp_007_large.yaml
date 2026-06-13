@@ -1,0 +1,100 @@
+# exp_007 — the fresh, fully-optimized clean run.
+#
+# Built after Option A confirmed (12% FSP plateau -> 26% clean) that off-policy
+# self-play corruption was strangling learning, AND after researching the
+# authoritative RLGym-PPO Guide (ZealanL) which revealed several of our earlier
+# settings diverged from Rocket-League-specific best practice.
+#
+# Every change here is evidence-based. Summary of what changed vs exp_006 and WHY:
+#
+#  CLEAN DATA          self_play OFF — stock symmetric self-play (both cars = current
+#                      policy). No corrupted transitions. Proven ~2x win rate in Option A.
+#  n_proc 8 -> 20      i9-14900HX has 24 cores; we were using 1/3. Guide: "increase
+#                      until max CPU usage." ~3-4x throughput.
+#  ppo_epochs 6 -> 3   Generic course guidance said 3-10; RLGym domain standard is 2-3.
+#                      6 over-fit each rollout. (Marian used 2, Diego ~2-3.)
+#  LR 3e-4 -> 2e-4     Guide: start ~2e-4, anneal down (1e-4 -> 0.8e-4) as bot improves.
+#                      Lower + (manually) annealed. Was a flat 3e-4 the whole time.
+#  ppo_batch_size      Now = ts_per_iteration (100k). Was mismatched at 50k.
+#  exp_buffer 150k->300k   Guide: ts x 2-3.
+#  touch_ball 0.1->5.0 THE big reward fix. Guide: "giant reward for actually hitting
+#                      the ball" early. Ours was ~50x too small — below even
+#                      velocity-to-ball. Bot was barely rewarded for the core skill.
+#  curriculum -> simple    Nexto (GC1) used simple rewards + standard kickoffs, NO
+#                      elaborate curriculum. Our kickoff/defensive/aerial mix diverted
+#                      budget from core play. Now: default kickoff + random only.
+#  arch medium -> large    Diego is going large (1024). Head-to-head: match his capacity
+#                      so we're not ceiling-capped. Feasible to fill at the new throughput.
+#  timestep_limit 2B   Commit to filling the large net (its competitive zone is 1B-5B).
+#                      A half-trained large loses to a well-trained medium — so we go long.
+
+extends: ../default.yaml
+
+experiment_name: exp_007_large
+seed: 11
+
+# --- Observations / actions: keep the proven defaults (89-dim, LookupAction) ---
+obs:
+  name: default
+action:
+  name: lookup
+
+# --- Rewards: touch-dominant early (RLGym Guide), simple & general (Nexto) ---
+rewards:
+  zero_sum: true
+  team_spirit: 0.0
+  opp_scale: 1.0
+  components:
+    - name: touch_ball
+      weight: 1.0          # SCORING stage (~295M): was 5.0 in Bootstrap. Touch no longer dominant.
+    - name: velocity_player_to_ball
+      weight: 0.3          # go toward ball (Scoring: was 0.5)
+    - name: face_ball
+      weight: 0.1          # gentle orientation nudge
+    - name: velocity_ball_to_goal
+      weight: 0.8          # push ball goalward (Scoring: was 0.5 — now the priority)
+    - name: event
+      weight: 15.0         # SCORING stage: stronger goal/event incentive (was 10.0)
+      kwargs:
+        goal:    1.0
+        concede: -1.0
+        shot:    0.2
+        save:    0.3
+        demo:    0.1
+
+# --- State setter: simple. Standard kickoff + random diversity. No heavy curriculum. ---
+state_setter:
+  name: weighted_sample
+  components:
+    - name: default       # standard kickoff (Nexto-style)
+      weight: 0.5
+    - name: random        # situational diversity
+      weight: 0.5
+      ball_rand_speed: true
+      cars_rand_speed: true
+      cars_on_ground: false
+
+learner:
+  arch: large                  # 1024 — match Diego, fill it with the long run
+  n_proc: 20                   # USE THE CPU (was 8 on a 24-core chip)
+  ts_per_iteration: 100_000
+  ppo_batch_size: 100_000      # = ts_per_iteration (was mismatched 50k)
+  ppo_minibatch_size: 50_000
+  exp_buffer_size: 300_000     # ts x 3 (was 150k)
+  ppo_epochs: 3                # RLGym domain standard 2-3 (was 6)
+  policy_lr: 1.0e-4            # ANNEALED ~500M (was 2.0e-4): refine/sharpen, pull entropy down
+  critic_lr: 1.0e-4            # annealed with policy_lr ~500M
+  ppo_ent_coef: 0.01           # keep — matches guide
+  ppo_clip_range: 0.2
+  gae_lambda: 0.95
+  standardize_returns: true
+  standardize_obs: false
+  save_every_ts: 5_000_000
+  n_checkpoints_to_keep: 200
+  timestep_limit: 2_000_000_000   # FINAL: push to 2B and stop completely (Marco's call 6/10). Resumes from 1.664B, self-stops at 2B. Fallbacks: exp007_FINAL_1p5B_1499158242, exp007_BACKUP_1p634B_1634170798
+
+self_play:
+  enabled: false               # CLEAN DATA — the proven fix
+
+logging:
+  wandb_group: exp_007_large

@@ -1,0 +1,52 @@
+{
+    "cumulative_timesteps": 1999210400,
+    "cumulative_model_updates": 179730,
+    "policy_average_reward": -1.6840370438112373,
+    "epoch": 19976,
+    "ts_since_last_save": 5000404,
+    "reward_running_stats": {
+        "mean": [
+            -0.05661935841649326
+        ],
+        "var": [
+            2994748886.225534
+        ],
+        "shape": [
+            1
+        ],
+        "count": 2998500
+    },
+    "wandb_run_id": "i9o2jrhg",
+    "wandb_project": "rlgym-finalproject",
+    "wandb_entity": "marco-ortiztogashi-ie-university",
+    "wandb_group": "exp_007_large",
+    "wandb_config": {
+        "n_proc": 20,
+        "min_inference_size": 80,
+        "timestep_limit": 2000000000,
+        "exp_buffer_size": 300000,
+        "ts_per_iteration": 100000,
+        "standardize_returns": true,
+        "standardize_obs": false,
+        "policy_layer_sizes": [
+            1024,
+            1024,
+            1024
+        ],
+        "critic_layer_sizes": [
+            1024,
+            1024,
+            1024
+        ],
+        "ppo_epochs": 3,
+        "ppo_batch_size": 100000,
+        "ppo_minibatch_size": 50000,
+        "ppo_ent_coef": 0.01,
+        "ppo_clip_range": 0.2,
+        "gae_lambda": 0.95,
+        "gae_gamma": 0.99,
+        "policy_lr": 0.0002,
+        "critic_lr": 0.0002,
+        "shm_buffer_size": 8192
+    }
+}

@@ -1,0 +1,96 @@
+# exp_007_enriched — exp_007 (large) + RICHER reward stack (Diego's "signal density" lever).
+#
+# CONTINUES exp_007_large (same experiment_name -> resumes its latest checkpoint).
+# DEPLOY AT ~1B: launch this instead of exp_007_large.yaml. It keeps everything
+# (large arch, clean data, annealed 1e-4) but swaps the sparse 5-reward stack for a
+# rich one that finally rewards the mechanics our bot never learned and Diego's
+# champion has: AERIALS (our biggest gap), speed/boost economy, defensive alignment,
+# and anti-own-goal clears.
+#
+# Diego's documented result: adding reward components broke his plateau ("increased
+# signal density accelerates learning"). Expect a 5-15M recalibration wobble after
+# launch (the reward change invalidates the value function), then a climb.
+#
+# SAFETY: copy the pre-deploy ~1B checkpoint to a fallback dir first (E4). If this
+# regresses vs Diego/Marian over the next milestone, revert to that checkpoint + the
+# original exp_007_large.yaml rewards.
+
+extends: ../default.yaml
+
+experiment_name: exp_007_large   # CONTINUE the same run (resumes ~1B checkpoint + W&B run)
+seed: 11
+
+obs:
+  name: default
+action:
+  name: lookup
+
+rewards:
+  zero_sum: true
+  team_spirit: 0.0
+  opp_scale: 1.0
+  components:
+    # --- proven scoring core (touch dialed down — the bot already hits the ball well) ---
+    - name: touch_ball
+      weight: 0.3            # was 1.0; Diego runs ~0.02 — bot has outgrown touch rewards
+    - name: velocity_player_to_ball
+      weight: 0.2            # was 0.3
+    - name: velocity_ball_to_goal
+      weight: 0.8            # keep — the core scoring drive
+    - name: event
+      weight: 12.0
+      kwargs:
+        goal:    1.0
+        concede: -1.0
+        shot:    0.4         # raised toward Diego (was 0.2)
+        save:    0.4         # raised toward Diego (was 0.3)
+        demo:    0.1
+    # --- NEW: richer signal density (Diego's lever) — mechanics we never rewarded ---
+    - name: aerial_touch              # our single biggest missing skill
+      weight: 1.5
+      kwargs:
+        height_scale: 1.0
+    - name: supersonic                # fast, boost-using, aggressive play
+      weight: 0.05
+    - name: save_boost                # boost economy
+      weight: 0.5
+    - name: ball_away_from_own_goal   # anti-own-goal / rewards clears
+      weight: 0.6
+    - name: align_ball_goal           # defensive + offensive car-ball-goal alignment
+      weight: 0.4
+
+state_setter:
+  name: weighted_sample
+  components:
+    - name: default
+      weight: 0.5
+    - name: random
+      weight: 0.5
+      ball_rand_speed: true
+      cars_rand_speed: true
+      cars_on_ground: false
+
+learner:
+  arch: large
+  n_proc: 20
+  ts_per_iteration: 100_000
+  ppo_batch_size: 100_000
+  ppo_minibatch_size: 50_000
+  exp_buffer_size: 300_000
+  ppo_epochs: 3
+  policy_lr: 1.0e-4            # keep the annealed LR (don't stack changes)
+  critic_lr: 1.0e-4
+  ppo_ent_coef: 0.01
+  ppo_clip_range: 0.2
+  gae_lambda: 0.95
+  standardize_returns: true
+  standardize_obs: false
+  save_every_ts: 5_000_000
+  n_checkpoints_to_keep: 200
+  timestep_limit: 2_000_000_000
+
+self_play:
+  enabled: false
+
+logging:
+  wandb_group: exp_007_enriched

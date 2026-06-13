@@ -1,0 +1,103 @@
+# Flagship experiment: the actual presentation bot.
+#
+# Self-play + curriculum + medium arch + tuned PPO + tuned rewards.
+#
+# Three differentiators vs Diego's simple_bot and Marian's exp_003_long_run:
+#   1. Fictitious Self-Play — orange is a random past snapshot (neither has).
+#      Now actually works with n_checkpoints_to_keep: 200 (rlgym_ppo default
+#      of 5 silently killed pool diversity in exp_005).
+#   2. Curriculum state setters — kickoff/random/defensive/aerial mixed in
+#      fixed proportions every episode (both teammates use plain RandomState).
+#   3. Course-aligned PPO hyperparams — see notes below.
+#
+# (AdvancedObs from rlgym-tools was considered but rlgym-tools 2.6.4 reorganized
+# its obs modules; the rlgym_sim-compatible advanced obs no longer exists in
+# the installed version. Defer the port to a follow-up if first run plateaus.)
+#
+# Hyperparam reasoning (informed by exp_005 results):
+#   * arch: small → medium (3x256 → 3x512). Matches Marian's capacity exactly.
+#     +25% wall-time, +2x model params. Worth it for the final bot.
+#   * policy_lr / critic_lr: 5e-4 → 3e-4. exp_005 hit clip fraction 0.08 at
+#     8M timesteps with 5e-4. Course-recommended default 3e-4 is safer and
+#     PPO's clipping does its real job at this LR.
+#   * ppo_epochs: 6 (kept). Course says 3-10; Marian uses 2 (below range).
+#   * ppo_ent_coef: 0.01 (kept). Course says ~0.01; Marian uses 0.001 (kills
+#     exploration too early).
+#   * n_checkpoints_to_keep: 200 — keep last 40M timesteps as opponent pool.
+#
+# Reward reasoning (kept from exp_005, validated):
+#   * velocity_player_to_ball 0.15 (tripled from default 0.05) — dense
+#     shaping bot can hear before goals appear.
+#   * touch_ball 0.1 added — bridges "go to ball" -> "score". Marian's 0.02
+#     is too quiet, Diego omits it entirely.
+#   * boost_pickup 0.05 added — bot needs boost to aerial, neither teammate
+#     rewards this so their bots can't sustain aerial play.
+
+extends: ../default.yaml
+
+experiment_name: exp_006_flagship
+seed: 7
+
+state_setter:
+  name: weighted_sample
+  components:
+    - name: kickoff         # most common situation in a real match
+      weight: 0.35
+    - name: random          # situational diversity
+      weight: 0.35
+      ball_rand_speed: true
+      cars_rand_speed: true
+      cars_on_ground: false
+    - name: defensive       # critical skill — must see often
+      weight: 0.20
+    - name: aerial          # hardest skill, lower weight to avoid dominating early
+      weight: 0.10
+
+rewards:
+  zero_sum: true
+  team_spirit: 0.0
+  opp_scale: 1.0
+  components:
+    - name: velocity_player_to_ball
+      weight: 0.15
+    - name: velocity_ball_to_goal
+      weight: 0.5
+    - name: face_ball
+      weight: 0.05
+    - name: touch_ball
+      weight: 0.1
+    - name: event
+      weight: 10.0
+      kwargs:
+        goal:    1.0
+        concede: -1.0
+        shot:    0.2
+        save:    0.4
+        demo:    0.1
+        boost_pickup: 0.05
+
+learner:
+  arch: medium                  # 3x512 (~700k params) — matches Marian's capacity
+  ts_per_iteration: 100_000
+  save_every_ts: 200_000        # populate opponent pool fast
+  n_checkpoints_to_keep: 200    # last 40M-timestep rolling window of opponents
+  timestep_limit: 565_000_000   # Option A test: resume from 515.7M, train ~50M CLEAN timesteps (self_play off), auto-stop at 565M for the recalibration eval vs Marian. Bump back up if clean data shows recovery.
+  ppo_epochs: 6                 # course-recommended (3-10); Marian uses 2
+  policy_lr: 3.0e-4             # course-default; safer than exp_005's 5e-4 which hit clip fraction 0.08
+  critic_lr: 3.0e-4
+  ppo_ent_coef: 0.01            # course says ~0.01; Marian uses 0.001 (kills exploration)
+  ppo_clip_range: 0.2
+  gae_lambda: 0.95
+
+self_play:
+  enabled: false                # DISABLED for Option A test: the FSP wrapper mislabels ~30% of training
+                                # data (orange car's recorded action != executed opponent action). Diego's
+                                # stock symmetric self-play uses clean on-policy data and beats Marian at 635M.
+                                # Testing whether clean data fixes our underperformance. Both cars now use
+                                # the current policy (stock rlgym_sim self-play).
+  pool_dir: checkpoints/{experiment_name}
+  latest_prob: 0.4
+  device: cpu
+
+logging:
+  wandb_group: flagship

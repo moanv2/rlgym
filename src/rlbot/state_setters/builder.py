@@ -33,4 +33,16 @@ def build_state_setter(config: dict[str, Any]):
         weights = [float(c.get("weight", 1.0)) for c in components]
         return WeightedSampleSetter(state_setters=setters, weights=weights)
 
+    if name == "kickoff":
+        from rlbot.state_setters.curriculum import KickoffState
+        return KickoffState()
+
+    if name == "defensive":
+        from rlbot.state_setters.curriculum import DefensiveState
+        return DefensiveState()
+
+    if name == "aerial":
+        from rlbot.state_setters.curriculum import AerialState
+        return AerialState()
+
     raise ValueError(f"Unknown state setter: {name!r}")

@@ -1,0 +1,94 @@
+# Flagship experiment: self-play + curriculum + tuned PPO + tuned rewards.
+#
+# Three differentiators vs Diego's simple_bot and Marian's exp_003:
+#   1. Fictitious Self-Play — orange is a random past snapshot (neither has)
+#   2. Curriculum state setters — kickoff/defensive/aerial mixed in fixed
+#      proportions every episode (both use plain RandomState)
+#   3. Tuned hyperparams + reward shaping — see notes below
+#
+# Hyperparam reasoning:
+#   * ppo_epochs: 2 → 6. Default rlgym_ppo Learner uses 10; both teammates'
+#     configs leave it at 2. Two epochs throws away most of PPO's data-reuse
+#     benefit. Six gets ~3x more learning per rollout without instability.
+#   * policy_lr / critic_lr: 5e-4 (vs default 3e-4). standardize_returns=true
+#     normalizes the gradient magnitude, so we can afford a slightly punchier
+#     LR without divergence. Empirically rlgym_ppo bots tolerate up to 1e-3.
+#   * ppo_ent_coef: 0.01 (vs Marian's 0.001). Higher entropy keeps exploration
+#     alive longer — Marian's value crushes exploration too early.
+#
+# Reward reasoning:
+#   * velocity_player_to_ball 0.05 → 0.15: tripled. Dense "go toward ball"
+#     signal is the bot's only feedback before it ever scores; weak shaping
+#     means most rollouts are noise.
+#   * face_ball 0.02 → 0.05: same logic.
+#   * touch_ball added at 0.1: explicit "hit the ball" reward (Diego's config
+#     omits this; Marian uses 0.02). Critical bridge between "go to ball" and
+#     "score a goal".
+#   * boost_pickup added at 0.05: bot can't aerial without boost. Curriculum
+#     has aerial scenarios at 10% — without this reward, the bot has no
+#     incentive to keep boost topped up.
+
+extends: ../default.yaml
+
+experiment_name: exp_005_curriculum
+seed: 4242
+
+state_setter:
+  name: weighted_sample
+  components:
+    - name: kickoff       # most common situation in a real match
+      weight: 0.35
+    - name: random        # situational diversity
+      weight: 0.35
+      ball_rand_speed: true
+      cars_rand_speed: true
+      cars_on_ground: false
+    - name: defensive     # critical skill — must see often
+      weight: 0.20
+    - name: aerial        # hardest skill, lower weight
+      weight: 0.10
+
+rewards:
+  zero_sum: true
+  team_spirit: 0.0
+  opp_scale: 1.0
+  components:
+    - name: velocity_player_to_ball
+      weight: 0.15        # tripled vs default — dense shaping for early learning
+    - name: velocity_ball_to_goal
+      weight: 0.5
+    - name: face_ball
+      weight: 0.05
+    - name: touch_ball
+      weight: 0.1         # bridges "go to ball" → "score"
+    - name: event
+      weight: 10.0
+      kwargs:
+        goal:    1.0
+        concede: -1.0
+        shot:    0.2
+        save:    0.4
+        demo:    0.1
+        boost_pickup: 0.05   # enables aerial play by maintaining boost
+
+learner:
+  arch: small
+  ts_per_iteration: 100_000
+  save_every_ts: 200_000        # populate opponent pool faster
+  n_checkpoints_to_keep: 200    # keep last 40M timesteps' worth of snapshots — rlgym_ppo default is 5 which kills self-play diversity AND blocks head-to-head eval against early checkpoints
+  timestep_limit: 150_000_000
+  ppo_epochs: 6            # 3x more data reuse than default config
+  policy_lr: 5.0e-4
+  critic_lr: 5.0e-4
+  ppo_ent_coef: 0.01       # higher than rlgym_ppo's 0.005 for more exploration
+  ppo_clip_range: 0.2
+  gae_lambda: 0.95
+
+self_play:
+  enabled: true
+  pool_dir: checkpoints/{experiment_name}
+  latest_prob: 0.4
+  device: cpu
+
+logging:
+  wandb_group: curriculum_self_play

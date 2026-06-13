@@ -1,0 +1,89 @@
+# exp_008 — exp_007 + Kinesthetic Reward Combination (Lucy-SKG, arXiv:2305.15801).
+#
+# IDENTICAL to exp_007_large in every way (large arch, n_proc 20, clean data,
+# ppo_epochs 3, LR 2e-4, 2B limit) EXCEPT the reward combination:
+#
+#   exp_007: weighted SUM of components (standard)
+#   exp_008: a KRC GROUP (signed geometric mean) for the compound offensive skill,
+#            linearly combined with simple components (Lucy-SKG's "mixed approach")
+#
+# This is a ONE-VARIABLE A/B test (protocol R6): only the reward combination differs.
+# Bake-off plan: run this fresh to ~30M, eval vs Marian, compare to exp_007 at a
+# similar timestep. Whichever wins becomes the main 1B+ run. Do NOT assume KRC is
+# better — let the eval decide (we learned that lesson with FSP).
+#
+# Why KRC could be a beast-maker: the geometric mean only pays out when the agent
+# does MULTIPLE sub-skills at once (near the ball AND driving it goalward), so it
+# learns compound skills instead of farming one easy reward. Magnitude-robust too.
+
+extends: ../default.yaml
+
+experiment_name: exp_008_krc
+seed: 23
+
+obs:
+  name: default
+action:
+  name: lookup
+
+rewards:
+  zero_sum: true
+  team_spirit: 0.0
+  opp_scale: 1.0
+  components:
+    # KRC compound skill: "offensive potential" — only rewards moving toward the
+    # ball AND driving the ball toward goal simultaneously (signed geometric mean).
+    - name: krc
+      weight: 2.0
+      group:
+        - name: velocity_player_to_ball
+        - name: velocity_ball_to_goal
+    # Simple components, linearly combined with the KRC group (mixed approach):
+    - name: touch_ball
+      weight: 5.0          # bootstrap the core skill (Bootstrap stage)
+    - name: face_ball
+      weight: 0.1
+    - name: event
+      weight: 10.0
+      kwargs:
+        goal:    1.0
+        concede: -1.0
+        shot:    0.2
+        save:    0.3
+        demo:    0.1
+
+state_setter:
+  name: weighted_sample
+  components:
+    - name: default
+      weight: 0.5
+    - name: random
+      weight: 0.5
+      ball_rand_speed: true
+      cars_rand_speed: true
+      cars_on_ground: false
+
+learner:
+  arch: large
+  n_proc: 20
+  ts_per_iteration: 100_000
+  ppo_batch_size: 100_000
+  ppo_minibatch_size: 50_000
+  exp_buffer_size: 300_000
+  ppo_epochs: 3
+  policy_lr: 2.0e-4
+  critic_lr: 2.0e-4
+  ppo_ent_coef: 0.01
+  ppo_clip_range: 0.2
+  gae_lambda: 0.95
+  standardize_returns: true
+  standardize_obs: false
+  save_every_ts: 5_000_000
+  n_checkpoints_to_keep: 200
+  timestep_limit: 31_000_000   # BAKE-OFF: auto-stop ~30M (writes 30M ckpt), eval vs exp_007's 3%. Bump to 2B if KRC wins.
+
+self_play:
+  enabled: false
+
+logging:
+  wandb_group: exp_008_krc

@@ -46,6 +46,19 @@ def _snapshot_run_metadata(cfg: Config, run_dir: Path) -> None:
     (run_dir / "run_metadata.json").write_text(json.dumps(meta, indent=2), encoding="utf-8")
 
 
+def _find_latest_checkpoint(run_dir: Path) -> str | None:
+    """Return the path of the highest-numbered checkpoint subdirectory inside
+    run_dir, or None if none exist. rlgym_ppo's `add_unix_timestamp=False`
+    setting means all saves land here under <timestep>/ subdirs."""
+    if not run_dir.exists():
+        return None
+    timesteps = [p for p in run_dir.iterdir()
+                 if p.is_dir() and p.name.isdigit() and (p / "PPO_POLICY.pt").exists()]
+    if not timesteps:
+        return None
+    return str(max(timesteps, key=lambda p: int(p.name)))
+
+
 def train(cfg: Config) -> None:
     log = get_logger("rlbot.train", log_file=LOG_ROOT / f"{cfg.experiment_name}.log")
     seed_everything(cfg.seed)
@@ -55,7 +68,28 @@ def train(cfg: Config) -> None:
     # Save metadata to logs/, not checkpoints/ — rlgym_ppo expects only digit-named subdirs in checkpoint folder
     _snapshot_run_metadata(cfg, LOG_ROOT)
 
+    # Resolve self-play pool_dir placeholder. Default to the live checkpoint
+    # folder so newly-saved snapshots become opponents automatically.
+    sp_cfg = cfg.extras.get("self_play") if cfg.extras else None
+    if sp_cfg and sp_cfg.get("enabled", False):
+        pool_dir = sp_cfg.get("pool_dir") or "checkpoints/{experiment_name}"
+        pool_dir = pool_dir.replace("{experiment_name}", cfg.experiment_name)
+        # Anchor to repo root so worker processes resolve the same path.
+        sp_cfg["pool_dir"] = str((REPO_ROOT / pool_dir).resolve())
+        log.info(f"self-play enabled — opponent pool: {sp_cfg['pool_dir']}")
+
     env_builder = make_env_builder(cfg.env, cfg.to_dict())
+
+    # Auto-resume: if checkpoints/<experiment>/ already has a numeric snapshot
+    # with a PPO_POLICY.pt, load the highest-numbered one and continue from
+    # there. Stops Ctrl+C / wifi drops / power loss from costing you hours of
+    # training. Pass `seed: <new value>` in the YAML and delete run_dir to
+    # force a fresh start.
+    resume_from = _find_latest_checkpoint(run_dir)
+    if resume_from:
+        log.info(f"[bold yellow]Resuming[/] from checkpoint: {resume_from}")
+    else:
+        log.info(f"No prior checkpoint found in {run_dir} — starting fresh")
 
     # --- rlgym-ppo Learner ---
     from rlgym_ppo import Learner
@@ -95,9 +129,14 @@ def train(cfg: Config) -> None:
         ppo_minibatch_size=int(L.get("ppo_minibatch_size", 50_000)),
         ppo_ent_coef=float(L.get("ppo_ent_coef", 0.01)),
         ppo_epochs=int(L.get("ppo_epochs", 2)),
+        ppo_clip_range=float(L.get("ppo_clip_range", 0.2)),
+        policy_lr=float(L.get("policy_lr", 3e-4)),
+        critic_lr=float(L.get("critic_lr", 3e-4)),
+        gae_lambda=float(L.get("gae_lambda", 0.95)),
         standardize_returns=bool(L.get("standardize_returns", True)),
         standardize_obs=bool(L.get("standardize_obs", False)),
         save_every_ts=int(L.get("save_every_ts", 1_000_000)),
+        n_checkpoints_to_keep=int(L.get("n_checkpoints_to_keep", 100)),
         timestep_limit=int(L.get("timestep_limit", 1_000_000_000)),
         log_to_wandb=wandb_enabled,
         wandb_run=wandb_run,
@@ -105,7 +144,8 @@ def train(cfg: Config) -> None:
         wandb_group_name=log_cfg.get("wandb_group", cfg.experiment_name),
         wandb_run_name=log_cfg.get("wandb_run", None),
         checkpoints_save_folder=str(run_dir),
-        add_unix_timestamp=False,  # disable timestamp so auto-resume works correctly
+        checkpoint_load_folder=resume_from,  # None = train from scratch
+        add_unix_timestamp=False,            # stable save path so resume actually finds prior runs
         policy_layer_sizes=arch,
         critic_layer_sizes=arch,
         render=False,

@@ -94,7 +94,9 @@ def _load_policy(checkpoint_path: Path, device: str = "cpu"):
     )
 
     weights_path = checkpoint_path / "PPO_POLICY.pt"
-    state_dict = torch.load(weights_path, map_location=device)
+    # weights_only=True: safe load — refuses to execute arbitrary pickle code.
+    # Important when loading checkpoints from external sources (e.g. teammates).
+    state_dict = torch.load(weights_path, map_location=device, weights_only=True)
     policy.load_state_dict(state_dict)
     policy.eval()
     return policy
@@ -115,7 +117,7 @@ def _build_eval_env():
         TimeoutCondition,
     )
 
-    from rlbot.actions.lookup_act import LookupAction
+    from rlbot.actions.lookup_action import LookupAction
 
     # ~200 simulated seconds max per episode to avoid infinite no-touch episodes
     timeout_steps = 3000
