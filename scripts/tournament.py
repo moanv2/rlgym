@@ -87,18 +87,28 @@ def load_policy(policy_path, obs_dim, n_actions):
     return policy
 
 
-def build_env(config_path, max_seconds):
+def build_env(config_path, max_seconds, states="kickoff"):
     full = load_config(config_path).to_dict()
-    # Each game must start INDEPENDENTLY — a single fixed kickoff + deterministic bots would
-    # replay the same game every time. Mix real kickoffs with random on-ground states so the
-    # tournament samples a diverse, representative set of situations.
-    full["state_setter"] = {
-        "name": "weighted_sample",
-        "components": [
-            {"name": "default", "weight": 1.0},  # real kickoffs (watchable)
-            {"name": "random", "weight": 1.0, "cars_on_ground": True},  # varied on-ground states
-        ],
-    }
+    # Tournament start conditions:
+    #   "kickoff" (default, FAIREST) — standard symmetric kickoff (rlgym's default setter cycles
+    #       the 5 standard kickoff positions). Both bots start equal, every game, no positional
+    #       luck. This is the RLBot/RL convention. Caveat: with DETERMINISTIC bots a given
+    #       (kickoff position, side) yields the same game, so distinct games ~= 5 positions x 2
+    #       sides; run enough games and lean on the championship final, and read the Wilson CIs
+    #       knowing the effective sample is the distinct openings, not the raw game count.
+    #   "mixed" — kickoffs + random on-ground states: many more DISTINCT deterministic games
+    #       (tighter, more robust Elo) but injects per-game positional luck (averages out over
+    #       many games). Use if you want a broader skill measure rather than pure fairness.
+    if states == "mixed":
+        full["state_setter"] = {
+            "name": "weighted_sample",
+            "components": [
+                {"name": "default", "weight": 1.0},
+                {"name": "random", "weight": 1.0, "cars_on_ground": True},
+            ],
+        }
+    else:
+        full["state_setter"] = {"name": "default"}  # symmetric standard kickoff — fairest
     full["terminal"]["timeout_seconds"] = int(max_seconds)
     env_cfg = dict(full["env"])
     env_cfg["team_size"] = 1
@@ -215,6 +225,13 @@ def main():
     p.add_argument("--max-seconds", type=int, default=60)
     p.add_argument("--deterministic", action="store_true")
     p.add_argument(
+        "--states",
+        choices=["kickoff", "mixed"],
+        default="kickoff",
+        help="start conditions: 'kickoff' (default, fairest — symmetric standard kickoff) or "
+        "'mixed' (kickoffs + random on-ground states for a broader, higher-sample skill measure).",
+    )
+    p.add_argument(
         "--final-games",
         type=int,
         default=200,
@@ -226,7 +243,8 @@ def main():
 
     with open(a.manifest, encoding="utf-8") as f:
         entrants = yaml.safe_load(f)["bots"]
-    env = build_env(a.config, a.max_seconds)
+    env = build_env(a.config, a.max_seconds, a.states)
+    print(f"start conditions: {a.states}", flush=True)
     n_actions = int(env.action_space.n)
     from rlbot.actions.lookup_action import LookupAction
 
