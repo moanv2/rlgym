@@ -3,6 +3,7 @@
 from rlbot.rewards import (
     builtin,  # noqa: F401
     custom,  # noqa: F401
+    custom_rl,  # noqa: F401  — game-knowledge rewards adopted from Diego's branch
 )
 from rlbot.rewards.builder import build_reward
 from rlbot.rewards.registry import REWARDS

@@ -1,0 +1,110 @@
+# ============================================================================
+# CURRICULUM STAGE — "Economy & Defense"  (the long final run: pro habits)
+# ============================================================================
+# The FINAL long-term run. It folds in the best of the team's reward work (mostly
+# Diego's `origin/diego` branch — rich, well-reasoned, but never actually wired in)
+# to fix the two things still holding the bot back, on top of the exp_010 balance:
+#
+#   1. BOOST ECONOMY is broken. exp_010 cranked the dense `save_boost` to 2.5 and it
+#      barely moved: boost_held rose 14.5% -> ~18% and the bot was STILL empty ~67%
+#      of every episode. A reward for *holding* boost rewards a state the bot doesn't
+#      know how to reach — it never teaches the *act* of going to fetch a pad. So we
+#      DROP the ungated save_boost and switch to Diego's GATED design:
+#        - big_boost_proximity: rewards closing on a big pad, but ONLY when low on
+#          boost AND the ball is far (safe to peel off). This is the active-routing
+#          signal save_boost lacked — the headline fix.
+#        - boost_reserve: rewards holding a reserve ONLY when not in an attacking
+#          play (ball far or in our half), so it never discourages spending boost on
+#          a real chance. sqrt-shaped (our improvement over Diego's linear form) to
+#          match save_boost's "punish empty, don't reward hoarding" curve.
+#   2. DEFENSE is thin (saves ~0.12/1k) and the bot mishits clears under pressure.
+#        - ball_away_from_own_goal: rewards clearing the ball away from our net,
+#          scaled by how deep the threat is (our improvement) — anti-own-goal.
+#        - backboard_defense: shadow-defense positioning, continuous on the ball->
+#          own-goal line (our improvement over Diego's binary y-only check).
+#   And one missing mechanic:
+#        - recovery: land wheels-down / oriented after a non-aerial air moment. The
+#          bot is airborne ~53% of the time and tumbles after every contact; gated so
+#          it never fights the aerial rewards.
+#
+# Adopted rewards are registered in src/rlbot/rewards/custom_rl.py and unit-tested
+# in tests/test_rewards.py; constants come from the ported src/rlbot/utils/rl_constants.py.
+#
+# UNCHANGED from exp_010 (don't undo the curriculum): the event LADDER stays dominant
+# (goal +80 == concede -80 > shot +60 > pad +40), and the offense/mechanics shaping
+# (velocity_ball_to_goal 6.0, shot_toward_goal 8.0, strong_touch 1.5, air_touch 2.5,
+# align_ball_goal 2.0, speed_toward_ball 4.5). State-setter mix inherited from exp_010
+# (45% random / 20% shooting / 20% aerial / 15% kickoff).
+#
+# Watch on wandb: boost/avg_held_pct should rise WELL past exp_010's ~18% plateau and
+# pct_steps_empty should fall hard from ~67%; saves/1k should climb. score/goals_per_1k
+# must hold (~1.2) — if it sags, the bot has gone too defensive: trim ball_away/
+# backboard first, then boost_reserve. If it still won't route, raise big_boost_proximity.
+#
+# Run:  python -m rlbot.training.train --config configs/experiments/exp_011_economy_defense.yaml
+extends: ./exp_010_balance.yaml
+
+experiment_name: exp_011_economy_defense
+
+rewards:
+  zero_sum: true
+  team_spirit: 0.0
+  opp_scale: 1.0
+  components:
+    # --- offense / mechanics shaping (UNCHANGED from exp_010) ---
+    - name: speed_toward_ball
+      weight: 4.5
+    - name: face_ball
+      weight: 0.25
+    - name: in_air
+      weight: 0.6
+    - name: double_jump
+      weight: 0.5
+    - name: velocity_ball_to_goal
+      weight: 6.0
+    - name: strong_touch
+      weight: 1.5
+    - name: shot_toward_goal
+      weight: 8.0
+    - name: air_touch
+      weight: 2.5
+    - name: align_ball_goal
+      weight: 2.0
+    # --- NEW: boost economy (Diego's gated design; REPLACES dense save_boost) ---
+    - name: big_boost_proximity   # active routing to a big pad when low + ball far
+      weight: 4.0
+    - name: boost_reserve         # hold a reserve when NOT attacking (sqrt-shaped)
+      weight: 2.0
+    # --- NEW: defense ---
+    - name: ball_away_from_own_goal  # clear away from our net, scaled by threat depth
+      weight: 2.0
+    - name: backboard_defense        # shadow-defense on the ball->own-goal line
+      weight: 1.5
+    # --- NEW: recovery mechanic ---
+    - name: recovery              # land wheels-down/oriented (gated off real aerials)
+      weight: 0.75
+    # --- event ladder (UNCHANGED — stays dominant) ---
+    - name: event
+      weight: 80.0
+      kwargs:
+        goal:         1.0         # +80 / goal — DOMINANT, equal to concede
+        concede:     -1.0         # -80 / concede
+        shot:         0.75        # +60 / shot
+        save:         0.5         # +40 / save
+        boost_pickup: 0.5         # +40 big pad — the discrete grab (routing comes from big_boost_proximity)
+
+learner:
+  policy_lr: 1.0e-4               # DOWN 1.2e-4 -> 1.0e-4: enough plasticity to learn the new
+  critic_lr: 1.0e-4              #   routing/defense/recovery behaviors, settling toward polish
+  ppo_ent_coef: 0.01             # keep healthy exploration while new signals reshape behavior
+  ts_per_iteration: 100_000
+  ppo_batch_size: 100_000
+  ppo_minibatch_size: 25_000
+  exp_buffer_size: 300_000
+  save_every_ts: 20_000_000       # ~85 saves across the ~1.7B run
+  n_checkpoints_to_keep: 10       # keep more checkpoints for final eval-vs-older-self
+  init_from: exp_010_balance      # warm-start exp_010's latest checkpoint (~1.297B)
+  timestep_limit: 3_000_000_000   # CUMULATIVE — ~1.7B NEW steps on top of exp_010's 1.3B (~4 days)
+
+logging:
+  wandb_group: exp_011_economy_defense

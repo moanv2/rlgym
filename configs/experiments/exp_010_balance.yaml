@@ -1,0 +1,119 @@
+# ============================================================================
+# CURRICULUM STAGE — "Re-balance"  (Plat+: value boost, defend as hard as you attack)
+# ============================================================================
+# The bot is genuinely good now, but two habits have drifted out of balance:
+#   1. It over-values SCORING relative to DEFENSE. exp_005 onward kept goal at 1.5
+#      (+120) while a concede was only -1.0 (-80), so attacking paid 1.5x more than
+#      not-being-scored-on. The bot has internalised that and now bombs forward,
+#      leaving its net open. Time to set the two roughly EQUAL.
+#   2. It still doesn't value boost as much as we'd like — it'll attack on fumes.
+# This ~200M run keeps everything else from the curriculum LOCKED and only turns the
+# three dials the balance needs. Warm-starts from exp_009_aerials; obs/action/arch
+# stay LOCKED across the curriculum, as does the exp_009 state-setter mix.
+#
+# A clean event LADDER, descending — goal/concede dominant, then shot, then full pad:
+#       goal +80  ==  concede -80   >   shot +60   >   full pad +40
+#   - event.goal 1.5 -> 1.0: a goal is now +80, exactly equal in magnitude to a
+#     concede (-80). Offense and defense get the same gradient — the bot should stop
+#     trading its net for a shot. (Defense = concede -80 AND save +40, both kept.)
+#   - event.shot 1.0 -> 0.75: +60 / shot on net. Pulled DOWN off the goal so scoring
+#     a goal clearly out-values merely getting a shot away — shot sits a clean step
+#     below goal/concede.
+#   - event.boost_pickup 0.75 -> 0.5: +40 big pad / +5 small pad. The full pad now
+#     sits a clean step below a shot (a goal is worth two pads, a shot 1.5). It's the
+#     discrete "grab it" bonus — but the routing behaviour is driven mainly by the
+#     dense save_boost below, NOT by inflating this event (which would be farmable and
+#     would break the ladder).
+#
+# The actual fix for "never routes to pads" — dense save_boost 1.5 -> 2.5:
+#   save_boost is per-step sqrt(boost_amount) (0..1), so at weight 2.5 it's a strong
+#   CONTINUOUS pull (3rd-largest dense term, behind velocity_ball_to_goal 6.0 and
+#   speed_toward_ball 4.5). At 1.0/1.5 it was one of the SMALLEST dense terms, which
+#   is why the bot ignored boost and ran dry. The sqrt shape is exactly right: the
+#   marginal reward for the first 0->25 boost is large and it flattens near full, so
+#   it heavily punishes running EMPTY (the user's "suffering") without rewarding
+#   hoarding or sitting passively on a full tank. This continuous "keep your tank up"
+#   pressure — not a bigger pickup event — is what makes the bot proactively route.
+#   - speed_toward_ball 4.0 -> 4.5: a slight bump to the dense pull toward the ball,
+#     as requested — keeps the bot's chase/contest sharp while the scoring lead eases.
+#
+# Deliberately UNCHANGED (don't undo the curriculum):
+#   - shot_toward_goal 8.0, strong_touch 1.5, velocity_ball_to_goal 6.0,
+#     align_ball_goal 2.0, air_touch 2.5, in_air 0.6, double_jump 0.5.
+#   - event.concede -1.0, event.save 0.5.
+#   - the exp_009 state-setter mix (45% random / 20% shooting / 20% aerial / 15%
+#     kickoff) — restated below unchanged so this config still reads end-to-end.
+#
+# Watch on wandb: boost/avg_held_pct should rise clearly and the bot should visibly
+# detour for pads; score/goals_per_1k_steps holds while defense improves (fewer
+# conceded, more saves). If it turns PASSIVE (sits on a full tank, stops attacking),
+# trim save_boost back toward 2.0 and/or nudge goal to 1.1; if it still won't route,
+# push save_boost to 3.0 before touching the pad event (keep the ladder intact).
+#
+# Run:  python -m rlbot.training.train --config configs/experiments/exp_010_balance.yaml
+extends: ./exp_009_aerials.yaml
+
+experiment_name: exp_010_balance
+
+state_setter:                   # UNCHANGED from exp_009 — restated for legibility
+  name: weighted_sample
+  components:
+    - name: random
+      weight: 0.45
+      ball_rand_speed: true
+      cars_rand_speed: true
+      cars_on_ground: false       # half airborne — aerial-friendly
+    - name: shooting              # keep ground finishing sharp
+      weight: 0.2
+    - name: aerial                # high-ball drill — go up and hit it
+      weight: 0.2
+    - name: default               # kickoffs
+      weight: 0.15
+
+rewards:
+  zero_sum: true
+  team_spirit: 0.0                # 1v1 — never share reward with the "team"
+  opp_scale: 1.0
+  components:
+    - name: speed_toward_ball     # UP 4.0 -> 4.5: a touch more pull to the ball
+      weight: 4.5
+    - name: face_ball
+      weight: 0.25
+    - name: in_air                # UNCHANGED — stay willing to jump
+      weight: 0.6
+    - name: double_jump           # UNCHANGED — keep spending the air jump
+      weight: 0.5
+    - name: save_boost            # UP 1.0 -> 2.5: strong dense sqrt(boost) — the routing lever
+      weight: 2.5
+    - name: velocity_ball_to_goal # UNCHANGED — dense goalward path
+      weight: 6.0
+    - name: strong_touch          # UNCHANGED
+      weight: 1.5
+    - name: shot_toward_goal      # UNCHANGED — still leads the dense shaping
+      weight: 8.0
+    - name: air_touch             # UNCHANGED — real aerials only
+      weight: 2.5
+    - name: align_ball_goal       # UNCHANGED — approach from goal-side
+      weight: 2.0
+    - name: event
+      weight: 80.0
+      kwargs:
+        goal:         1.0         # DOWN 1.5 -> 1.0: +80 / goal — DOMINANT, equal to concede
+        concede:     -1.0         # -80 / concede — defense matched to offense
+        shot:         0.75        # DOWN 1.0 -> 0.75: +60 / shot — a clean step below goal
+        save:         0.5         # +40 / save — unchanged
+        boost_pickup: 0.5         # DOWN 0.75 -> 0.5: +40 big pad — a clean step below shot
+
+learner:
+  policy_lr: 1.2e-4               # keep refining at the curriculum's current LR
+  critic_lr: 1.2e-4
+  ts_per_iteration: 100_000
+  ppo_batch_size: 100_000
+  ppo_minibatch_size: 25_000
+  exp_buffer_size: 300_000
+  save_every_ts: 10_000_000       # ~20 checkpoints across the ~200M run
+  init_from: exp_009_aerials      # warm-start the aerials policy (latest checkpoint)
+  timestep_limit: 1_300_000_000   # CUMULATIVE — ~200M new on top of exp_009's ~1.1B
+
+logging:
+  wandb_group: exp_010_balance

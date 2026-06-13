@@ -30,7 +30,11 @@ from rlbot.rewards.registry import REWARDS
 try:
     import numpy as np
     from rlgym_sim.utils import RewardFunction
-    from rlgym_sim.utils.common_values import (
+    from rlgym_sim.utils.gamestates import GameState, PlayerData
+
+    # Field/physics constants come from our single source of truth (values are
+    # byte-identical to rlgym_sim.utils.common_values — see test_rl_constants).
+    from rlbot.utils.rl_constants import (
         BACK_WALL_Y,
         BALL_MAX_SPEED,
         BLUE_GOAL_BACK,
@@ -39,7 +43,6 @@ try:
         CEILING_Z,
         ORANGE_GOAL_BACK,
     )
-    from rlgym_sim.utils.gamestates import GameState, PlayerData
 except ImportError:
     pass
 else:
