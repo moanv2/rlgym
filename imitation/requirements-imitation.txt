@@ -1,0 +1,20 @@
+# Dependencies for the OPTIONAL imitation-library cross-check (bc_imitation_lib.py).
+#
+# Install these in a SEPARATE virtualenv -- NOT in the rl-group-project training env.
+# `imitation` pulls in `gymnasium`, which clashes with the legacy `gym` that `rlgym_sim`
+# depends on; installing it into the training env would break the live PPO run.
+#
+#   python -m venv .venv-il && . .venv-il/Scripts/activate   # (Windows)
+#   pip install -r imitation/requirements-imitation.txt
+#   python imitation/bc_imitation_lib.py
+#
+# The from-scratch BC in il_core.py is the primary, graded implementation. This is a
+# cross-check that the same dataset trains comparably with a standard library.
+
+# Tested against the imitation 1.x API (Python 3.10). Upper bounds guard the optional
+# cross-check from resolver drift; they do not affect the training env (these stay out of it).
+imitation>=1.0,<2.0
+stable-baselines3>=2.2,<3.0
+gymnasium>=0.29,<1.1
+torch>=2.0
+numpy>=1.24,<2.0

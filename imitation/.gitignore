@@ -1,0 +1,11 @@
+# Generated IL artifacts: regenerable from the notebooks, and large/binary. The executed
+# notebooks already carry the plots + numbers, so we keep these out of git. They ARE included
+# in the final submission zip.
+data/*
+!data/.gitkeep
+artifacts/*
+!artifacts/.gitkeep
+
+# caches
+__pycache__/
+.ipynb_checkpoints/
