@@ -1,0 +1,12 @@
+# Tournament entrants. Each: {label, policy (PPO_POLICY.pt or its containing folder), obs}.
+# obs = 'advanced' (AdvancedObs 107) or 'default' (DefaultObs 89); net width auto-detected.
+# Teammates' bots get appended as they push to their branches (the watcher flags them).
+bots:
+  # --- our progression ladder (shows the champion evolving + stomping its younger selves) ---
+  - {label: martin_250M,       policy: checkpoints/_eval_snapshots/basics_250M,                    obs: advanced}
+  - {label: martin_600M,       policy: checkpoints/_eval_snapshots/offense_fresh_600M,             obs: advanced}
+  - {label: martin_1.3B,       policy: checkpoints/_eval_snapshots/champion_best_1.295B,           obs: advanced}
+  - {label: martin_champ_2.1B, policy: martin-bots/checkpoints/CHAMPION_2.1B_recipeD_advanced1024, obs: advanced}
+  # --- teammates' shared bots ---
+  - {label: diego_1.18B,       policy: checkpoints/_eval_snapshots/diego_1.18B,                    obs: default}
+  # TODO add as they post tonight: nachi, marian, marco
