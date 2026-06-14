@@ -290,6 +290,7 @@ def train_bc(student: BCStudent, X: np.ndarray, y: np.ndarray, *, epochs: int = 
     it leaks correlated neighbouring frames, so it OVERESTIMATES accuracy on sequential data.
     """
     device = device or pick_device()
+    torch.manual_seed(seed)  # reproducible batch shuffling (model init is seeded by the caller)
     Xt = torch.as_tensor(X, dtype=torch.float32)
     yt = torch.as_tensor(y, dtype=torch.long)
     if val_data is not None:

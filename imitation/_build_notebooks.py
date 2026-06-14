@@ -33,6 +33,7 @@ sys.path.insert(0, os.path.abspath('..'))   # make imitation/ importable -> il_c
 import il_core
 il_core.use_repo_cwd()                       # chdir to repo root so RocketSim finds ./collision_meshes/
 import numpy as np
+import torch
 import matplotlib.pyplot as plt
 from il_core import (ExpertPolicy, BCStudent, DemoBuffer, collect_expert_demos,
                      train_bc, rollout_student_relabel, evaluate_student_winrate,
@@ -132,7 +133,7 @@ def nb_02():
             "sharing the CPU. Scale it up (e.g. 200+) for the final submission numbers when the CPU is free."
         ),
         new_code_cell(
-            "N_EPISODES = 30      # bump to 200+ for final numbers\n"
+            "N_EPISODES = 60      # scaled up for tighter numbers (bump to 200+ if CPU is fully free)\n"
             "MAX_SECONDS = 20     # per-episode cap (game seconds)\n"
             "SEED = 0"
         ),
@@ -235,18 +236,24 @@ def nb_03():
         ),
         new_code_cell(
             "fractions = [0.1, 0.25, 0.5, 0.75, 1.0]\n"
-            "sizes, accs = [], []\n"
-            "rng = np.random.default_rng(0)\n"
+            "SEEDS = [0, 1, 2]   # repeat each point to get error bars\n"
+            "sizes, accs_mean, accs_std = [], [], []\n"
             "for f in fractions:\n"
-            "    m = max(64, int(len(ytr) * f))\n"
-            "    sub = rng.permutation(len(ytr))[:m]\n"
-            "    s = BCStudent(hidden_sizes=(256, 256))\n"
-            "    r = train_bc(s, Xtr[sub], ytr[sub], val_data=(Xval, yval), epochs=60, batch_size=512, lr=1e-3)\n"
-            "    sizes.append(m); accs.append(r['val_acc'])\n"
-            "    print(f'  {m:6d} train frames -> held-out acc {r[\"val_acc\"]:.3f}')\n"
+            "    m = max(64, int(len(ytr) * f)); accs_f = []\n"
+            "    for sd in SEEDS:\n"
+            "        rng = np.random.default_rng(sd)\n"
+            "        sub = rng.permutation(len(ytr))[:m]\n"
+            "        torch.manual_seed(sd)\n"
+            "        s = BCStudent(hidden_sizes=(256, 256))\n"
+            "        r = train_bc(s, Xtr[sub], ytr[sub], val_data=(Xval, yval), epochs=60, batch_size=512, lr=1e-3, seed=sd)\n"
+            "        accs_f.append(r['val_acc'])\n"
+            "    sizes.append(m); accs_mean.append(np.mean(accs_f)); accs_std.append(np.std(accs_f))\n"
+            "    print(f'  {m:6d} train frames -> held-out acc {np.mean(accs_f):.3f} +/- {np.std(accs_f):.3f}')\n"
             "fig, ax = plt.subplots(figsize=(7, 4))\n"
-            "ax.plot(sizes, accs, 'o-'); ax.set_xlabel('# training frames'); ax.set_ylabel('held-out top-1 accuracy')\n"
-            "ax.set_title('BC accuracy vs dataset size (fixed held-out episodes)'); plt.tight_layout(); plt.show()"
+            "ax.errorbar(sizes, accs_mean, yerr=accs_std, fmt='o-', capsize=4)\n"
+            "ax.set_xlabel('# training frames'); ax.set_ylabel('held-out top-1 accuracy')\n"
+            "ax.set_title('BC accuracy vs dataset size (mean +/- std over 3 seeds, fixed held-out episodes)')\n"
+            "plt.tight_layout(); plt.show()"
         ),
         new_markdown_cell(
             "## Ablation 2 - network capacity\n"
@@ -256,15 +263,20 @@ def nb_03():
         ),
         new_code_cell(
             "archs = {'narrow (128x3)': (128, 128, 128), 'mid (256x3)': (256, 256, 256), 'wide (512x3)': (512, 512, 512)}\n"
-            "names, cap_acc = [], []\n"
+            "SEEDS = [0, 1, 2]\n"
+            "names, cap_mean, cap_std = [], [], []\n"
             "for name, hs in archs.items():\n"
-            "    s = BCStudent(hidden_sizes=hs)\n"
-            "    r = train_bc(s, Xtr, ytr, val_data=(Xval, yval), epochs=60, batch_size=512, lr=1e-3)\n"
-            "    names.append(name); cap_acc.append(r['val_acc'])\n"
-            "    print(f'  {name:14s} -> held-out acc {r[\"val_acc\"]:.3f}')\n"
+            "    accs_a = []\n"
+            "    for sd in SEEDS:\n"
+            "        torch.manual_seed(sd)\n"
+            "        s = BCStudent(hidden_sizes=hs)\n"
+            "        r = train_bc(s, Xtr, ytr, val_data=(Xval, yval), epochs=60, batch_size=512, lr=1e-3, seed=sd)\n"
+            "        accs_a.append(r['val_acc'])\n"
+            "    names.append(name); cap_mean.append(np.mean(accs_a)); cap_std.append(np.std(accs_a))\n"
+            "    print(f'  {name:14s} -> held-out acc {np.mean(accs_a):.3f} +/- {np.std(accs_a):.3f}')\n"
             "fig, ax = plt.subplots(figsize=(7, 4))\n"
-            "ax.bar(names, cap_acc, color='#1f6fff'); ax.set_ylabel('held-out top-1 accuracy')\n"
-            "ax.set_title('BC accuracy vs width (depth fixed at 3)'); plt.tight_layout(); plt.show()"
+            "ax.bar(names, cap_mean, yerr=cap_std, capsize=4, color='#1f6fff'); ax.set_ylabel('held-out top-1 accuracy')\n"
+            "ax.set_title('BC accuracy vs width (depth 3, mean +/- std over 3 seeds)'); plt.tight_layout(); plt.show()"
         ),
         new_markdown_cell(
             "## Discussion\n"
@@ -307,7 +319,8 @@ def nb_04():
         new_code_cell(
             "SEED_PAIRS = 5000        # small BC seed from the kickoff demos -> pronounced covariate shift\n"
             "DAGGER_ITERS = 6         # aggregation rounds\n"
-            "RELABEL_EPISODES = 16    # student rollouts per round (also the agreement measurement)\n"
+            "RELABEL_EPISODES = 8     # student rollouts per measurement\n"
+            "N_MEAS = 3               # independent rollouts per round -> agreement error bars\n"
             "WINRATE_EPISODES = 20    # head-to-head task check vs a weak fixed opponent\n"
             "WEAK_OPP = os.path.join(REPO_ROOT, 'checkpoints', '_eval_snapshots', 'basics_250M')  # advanced-obs\n"
             "ARCH = (256, 256)"
@@ -349,30 +362,33 @@ def nb_04():
         ),
         new_code_cell(
             "Xa, ya = Xs.copy(), ys.copy()\n"
-            "agree_hist, size_hist = [], []\n"
+            "agree_mean, agree_std, size_hist = [], [], []\n"
             "for it in range(DAGGER_ITERS + 1):\n"
-            "    # the relabel rollout doubles as the agreement measurement for the CURRENT student\n"
-            "    nobs, nlbl, agree, _ = rollout_student_relabel(student, expert, RELABEL_EPISODES, randomize=False, seed=600 + it)\n"
-            "    agree_hist.append(agree); size_hist.append(len(ya))\n"
-            "    print(f'iter {it}: |D|={len(ya):6d} | agreement-on-student-states {agree:.3f}')\n"
+            "    # N_MEAS independent rollouts: aggregate all their labels, report agreement mean +/- std\n"
+            "    obs_b, lbl_b, ags = [], [], []\n"
+            "    for m in range(N_MEAS):\n"
+            "        nobs, nlbl, ag, _ = rollout_student_relabel(student, expert, RELABEL_EPISODES, randomize=False, seed=600 + it*10 + m)\n"
+            "        obs_b.append(nobs); lbl_b.append(nlbl); ags.append(ag)\n"
+            "    agree_mean.append(float(np.mean(ags))); agree_std.append(float(np.std(ags))); size_hist.append(len(ya))\n"
+            "    print(f'iter {it}: |D|={len(ya):6d} | agreement {np.mean(ags):.3f} +/- {np.std(ags):.3f}')\n"
             "    if it < DAGGER_ITERS:\n"
-            "        Xa = np.concatenate([Xa, nobs], axis=0); ya = np.concatenate([ya, nlbl], axis=0)\n"
+            "        Xa = np.concatenate([Xa] + obs_b, axis=0); ya = np.concatenate([ya] + lbl_b, axis=0)\n"
             "        student = BCStudent(hidden_sizes=ARCH)\n"
             "        train_bc(student, Xa, ya, epochs=80, batch_size=512, lr=1e-3, val_frac=0.15)"
         ),
         new_code_cell(
             "wr_dagger = evaluate_student_winrate(student, WEAK_OPP, episodes=WINRATE_EPISODES)\n"
             "save_student_checkpoint(student, os.path.join(ARTIFACT_DIR, 'dagger_student'))\n"
-            "print(f'BC     student-state agreement: {agree_hist[0]:.3f}  | win-rate vs weak bot: {wr_bc[\"blue_win_rate\"]:.3f}')\n"
-            "print(f'DAgger student-state agreement: {agree_hist[-1]:.3f}  | win-rate vs weak bot: {wr_dagger[\"blue_win_rate\"]:.3f}')"
+            "print(f'BC     student-state agreement: {agree_mean[0]:.3f} +/- {agree_std[0]:.3f}  | win-rate vs weak bot: {wr_bc[\"blue_win_rate\"]:.3f}')\n"
+            "print(f'DAgger student-state agreement: {agree_mean[-1]:.3f} +/- {agree_std[-1]:.3f}  | win-rate vs weak bot: {wr_dagger[\"blue_win_rate\"]:.3f}')"
         ),
         new_code_cell(
             "fig, ax = plt.subplots(1, 2, figsize=(13, 4))\n"
-            "ax[0].plot(range(len(agree_hist)), agree_hist, 'o-', label='student-visited states')\n"
+            "ax[0].errorbar(range(len(agree_mean)), agree_mean, yerr=agree_std, fmt='o-', capsize=4, label='student-visited states')\n"
             "ax[0].axhline(expert_state_acc, ls='--', color='gray', label='BC agreement on expert states')\n"
-            "ax[0].set_title('Expert agreement on student-visited states (per DAgger round)'); ax[0].set_xlabel('DAgger iteration')\n"
+            "ax[0].set_title('Expert agreement on student-visited states (mean +/- std, 3 rollouts/round)'); ax[0].set_xlabel('DAgger iteration')\n"
             "ax[0].set_ylabel('expert agreement'); ax[0].legend()\n"
-            "ax[1].bar(['BC seed', 'DAgger final'], [agree_hist[0], agree_hist[-1]], color=['#888', '#1f6fff'])\n"
+            "ax[1].bar(['BC seed', 'DAgger final'], [agree_mean[0], agree_mean[-1]], yerr=[agree_std[0], agree_std[-1]], capsize=4, color=['#888', '#1f6fff'])\n"
             "ax[1].set_title('Agreement on student-visited states'); ax[1].set_ylabel('agreement')\n"
             "plt.tight_layout(); plt.show()"
         ),

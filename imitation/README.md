@@ -72,24 +72,26 @@ render the expert-vs-student match without any new evaluation code.
 
 ## Results summary (from the executed notebooks)
 
-All accuracies are **leak-free**: we hold out whole EPISODES for validation (a random frame
-split would scatter near-identical 15 Hz neighbours across train/val and inflate the numbers).
+All accuracies are **leak-free** (validation holds out whole EPISODES, a random frame split
+would scatter near-identical 15 Hz neighbours across train/val and inflate the numbers), and
+the ablations and DAgger curve are reported as **mean +/- std over repeats**.
 
-- **Dataset:** 30 kickoff-game episodes -> ~14.4k `(obs, action)` pairs, all 90 actions used,
+- **Dataset:** 60 kickoff-game episodes -> ~26.5k `(obs, action)` pairs, all 90 actions used,
   heavy class imbalance (most common action ~13%, majority-class baseline top-1 = 0.13).
-- **Behavioural Cloning (episode-held-out):** **top-1 = 0.31, top-3 = 0.51** (~2.4x the
+- **Behavioural Cloning (episode-held-out):** **top-1 = 0.35, top-3 = 0.57** (~2.7x the
   majority baseline; still <50%, i.e. the clone disagrees with the expert on most states).
-  Accuracy scales with data (0.25 -> 0.29 over the size ablation, on a fixed held-out set) and
-  is essentially flat across width (single seed -> treat small gaps as noise).
-- **Covariate shift, made concrete:** a 5k-pair BC clone agrees with the expert ~0.28 per
-  action on held-out expert states but only ~0.15 on its *own* visited states (gap ~+0.13), and
+  Accuracy scales with data (0.29 -> 0.36 across the size ablation, tight error bars over 3
+  seeds) and is flat across network width (0.35 to 0.36, error bars overlap, so capacity barely
+  matters in this regime).
+- **Covariate shift, made concrete:** a 5k-pair BC clone agrees with the expert ~0.31 per
+  action on held-out expert states but only ~0.20 on its *own* visited states (gap ~+0.11), and
   wins ~0% even against a much smaller 250M-step bot - action errors compound over a ~200-step
   episode (high per-action accuracy does not imply task skill).
 - **DAgger:** labelling the student's own visited states raises agreement on that distribution
-  from ~0.17 to **~0.85** across 6 rounds (it ends agreeing with the expert on its own states
-  *far more* than BC did on expert states) - the **O(eps*T)** vs **O(eps*T^2)** story made
-  concrete. The per-round estimate is noisy (single 16-episode rollout each) but the net rise is
-  large. The expert-vs-student video is a 0-0 draw. (Exact curve in `04_dagger.ipynb`.)
+  from ~0.15 to **~0.69** (mean +/- std over 3 rollouts per round) across 6 rounds, closing the
+  covariate-shift gap - the **O(eps*T)** vs **O(eps*T^2)** story made concrete. The per-round
+  metric is noisy but the net rise is large and clear. The expert-vs-student video is a close
+  game. (Exact curve in `04_dagger.ipynb`.)
 
 ## How this covers the IL requirements
 
