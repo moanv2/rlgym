@@ -78,6 +78,13 @@ KICKOFF_BOOST = 33.0              # starting boost at standard kickoff
 # Rotation
 CAR_MAX_PITCH_RATE = 5.5          # rad/s, also yaw, also roll
 
+# Jump physics (RLGym "Game Values" reference). These bound the flip-cancel
+# timing window the policy implicitly learns for fast kickoffs: a flip must be
+# initiated within DOUBLEJUMP_MAX_DELAY of the first jump, and flip torque
+# applies for FLIP_TORQUE_TIME once started.
+DOUBLEJUMP_MAX_DELAY = 1.25       # s, max time between first and second jump
+FLIP_TORQUE_TIME = 0.65           # s, duration of flip torque application
+
 # ============================================================================
 # Boost pads
 # ============================================================================

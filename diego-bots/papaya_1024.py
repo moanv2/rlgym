@@ -1,10 +1,12 @@
 """
 papaya_1024 — 1v1 PPO bot, LARGE 1024x3 architecture variant. Educational scaffold.
 
-Sibling of simple_bot.py. Identical reward stack, obs, action parser, state
-setter, and PPO knobs — the ONLY changed variable is network width: 1024x3
-here vs 512x3 in simple_bot.py. Keeping everything else fixed makes this a
-clean A/B on architecture capacity.
+Sibling of simple_bot.py, but long since diverged: papaya runs AdvancedObs
+(107-dim), the v5 reward stack (boost conservation + anti-overcommit +
+recovery/flick mechanics), aerial/dribble drill state setters, and the v6
+optimizer tune (ppo_epochs=3, ent_coef=0.005, explicit LRs — see
+docs/papaya_v6_overnight_tune.md). simple_bot.py remains the 512x3
+DefaultObs baseline for comparison.
 
 This is a FRESH-FROM-SCRATCH run, not a warm-start. It does NOT inherit the
 512x3 bot's learned strategy: that strategy lives entirely in the trained
@@ -120,6 +122,11 @@ from rlgym_sim.utils.terminal_conditions.common_conditions import (
     GoalScoredCondition,
     NoTouchTimeoutCondition,
 )
+
+# v7: ends episodes where the kickoff never resolves (ball still in the center
+# zone after ~4s), so kickoff drills recycle faster. Arms only until the ball
+# first leaves the center radius -- can never terminate normal mid-game play.
+from rlbot.terminal.kickoff_stall import KickoffStallCondition
 
 # LookupAction is our vendored fully discrete action parser. The policy
 # network outputs a single integer in 0..89 and LookupAction translates it
@@ -266,7 +273,7 @@ def build_env():
             0.7,    # backboard defense: v5 0.45→0.7, hold goal-side vs overcommit
             0.6,    # ball-away-from-own-goal: anti own-goal under pressure
             0.20,   # dribble-to-goal: small directional nudge toward enemy net
-            0.35,   # kickoff: commit hard off kickoff
+            0.5,    # kickoff: v7 0.35->0.5 -- now time-decaying first-touch (pays once, early >> late)
             0.15,   # recovery: polish signal, air-gated, kept small
             1.0,    # flick: sparse finishing-mechanic event, meaningful weight
             0.4,    # NEW v5 boost-reserve: conserve boost when not in an active play
@@ -315,6 +322,15 @@ def build_env():
         terminal_conditions=[
             GoalScoredCondition(),
             NoTouchTimeoutCondition(no_touch_ticks),
+            # v7: kill kickoffs that never resolve (ball still in the center
+            # zone after 4s) so kickoff drills recycle ~2.5x faster. Arms only
+            # while the ball has never left the center radius, so it can never
+            # cut normal mid-game play. See src/rlbot/terminal/kickoff_stall.py.
+            KickoffStallCondition(
+                max_kickoff_seconds=4.0,
+                center_radius=300.0,
+                tick_skip=tick_skip,
+            ),
         ],
         action_parser=LookupAction(),
     )
@@ -417,20 +433,25 @@ def _capture_config() -> dict:
     return {
         "experiment_name": EXPERIMENT_NAME,
         # we changing to 16 as we have 24 logical processors used to be 14
-        "n_proc": 16,
+        "n_proc": 18,
         "ppo_batch_size": 100_000,
         "ts_per_iteration": 100_000,
         "ppo_minibatch_size": 100_000,
         "exp_buffer_size": 300_000,
-        # changing here to 180 used to be 140 
+        # changing here to 180 used to be 140
         "min_inference_size": 180,
-        "ppo_epochs": 2,
-        "ppo_ent_coef": 0.01,
+        "ppo_epochs": 3,                     # v6: 2→3 (6→9 optimizer steps/iter)
+        "ppo_ent_coef": 0.005,               # v7.1: reverted 0.0075→0.005 (chart: 0.005 is the 66% regime)
+        "policy_lr": 3e-4,                   # v6: now explicit (unchanged value)
+        "critic_lr": 3e-4,                   # v6: now explicit (unchanged value)
         "policy_layer_sizes": [1024, 1024, 1024],
         "critic_layer_sizes": [1024, 1024, 1024],
         "standardize_returns": True,
         "standardize_obs": False,
-        "save_every_ts": 100_000,
+        "save_every_ts": 1_000_000,          # v6: 100k→1M (SSD wear / iteration time)
+        "n_checkpoints_to_keep": 50,         # v6: 5→50 (overnight rollback window)
+        "timestep_limit": 5_000_000_000,     # v6: 2B→5B (don't self-stop mid-grind)
+        "training_tune_version": "v6 optimizer pass (2026-06-11): +1 ppo epoch, ent_coef halved, LRs pinned explicit, checkpoint retention overhaul. Rewards untouched (still v5). See docs/papaya_v6_overnight_tune.md",
         "reward_function": "ZeroSumReward(CombinedReward(nexto_base [unwrapped] + custom_rl rewards))",
         "reward_components": [
             "nexto_base (Nexto-style, weight 1.0) [v5: player-to-ball 0.6/0.7→0.3/0.3, save_boost 0.05→0.3]",
@@ -441,14 +462,15 @@ def _capture_config() -> dict:
             "BackboardDefenseReward (weight 0.7) [v5: 0.45→0.7, hold goal-side]",
             "BallAwayFromOwnGoalReward (weight 0.6)",
             "DribbleToGoalReward (weight 0.20)",
-            "KickoffReward (weight 0.35)",
+            "KickoffReward v2 (weight 0.5) [v7: time-decaying first-touch, pays once, early >> late, +directional term]",
             "RecoveryReward (weight 0.15) [v4]",
             "FlickReward (weight 1.0) [v4]",
             "BoostReserveReward (weight 0.4) [v5: keep boost for recoveries/saves]",
             "MaintainSpeedReward REMOVED [v5: was the boost-dumping driver]",
             "ZeroSumReward wrapping (team_spirit=0, opp_scale=1)",
         ],
-        "reward_version": "v5 (papaya: boost conservation + anti-overcommit; -maintainspeed, supersonic↓, saveboost↑, +boostreserve, ballchase↓, backboard↑, aerialtouch↑, aerial drills↑)",
+        "reward_version": "v7 (fast-kickoff: KickoffReward v2 time-decaying first-touch @0.5, +KickoffStallCondition 4s; v5 boost/overcommit stack otherwise unchanged)",
+        "terminal_conditions": "GoalScored + NoTouchTimeout(10s) + KickoffStallCondition(4s, r=300, armed-until-ball-leaves-center) [v7]",
         "nexto_base_components": [
             "VelocityPlayerToBallReward (weight 0.3) [v5: 0.6→0.3, anti-overcommit]",
             "LiuDistancePlayerToBallReward (weight 0.3) [v5: 0.7→0.3, anti-overcommit]",
@@ -654,8 +676,10 @@ if __name__ == "__main__":
         # more RAM and CPU contention. Rule of thumb: ~1.5x physical cores.
         # Diego's machine has 12 physical / 24 logical cores, so 14 leaves
         # plenty of headroom for OS / browser / training side-tools.
-        # Was 8 — bumped to 14 to push Overall Steps/sec from ~7k toward 12k+.
-        n_proc=16,
+        # Was 8 — bumped to 14 to push Overall Steps/sec from ~7k toward 12k+
+        # 
+        # bumping to 18 (june 14th)
+        n_proc=18,
 
         # The Learner batches inference requests across workers for GPU
         # efficiency. min_inference_size says: do not run the policy
@@ -699,13 +723,47 @@ if __name__ == "__main__":
         # values keep the policy stochastic for longer; lower values let
         # it converge faster but risk premature exploitation of a bad
         # local optimum. 0.01 is the conventional starting point.
-        ppo_ent_coef=0.01,
+        #
+        # v6: 0.01 → 0.005. Policy entropy sat PINNED at ~4.0 (max ln(90)≈4.5)
+        # for the entire 1.34B-step run — the policy never sharpened. Cutting
+        # the bonus let it drop to ~3.53 and play improved (66% stochastic vs
+        # Martin's 2.1B champion). LOWER entropy helped THIS (heavily-shaped)
+        # stack.
+        #
+        # v7.1: briefly tried 0.0075 (a step toward Martin's 0.01), then REVERTED
+        # to 0.005. The entropy chart settled it: ent_coef cleanly sets the
+        # entropy equilibrium (0.01 -> ~4.0, 0.005 -> ~3.53), and ~3.53 is the
+        # regime where this bot reached 66% vs Martin's champion. Raising the
+        # coef just pulls entropy back UP toward the un-committed 4.0 state.
+        # Martin runs 0.01 only because his rewards are lean; for our heavily
+        # shaped stack, LOWER is the proven-good direction. Staying at 0.005.
+        ppo_ent_coef=0.005,
 
-        # ppo_epochs: how many passes over each collected batch the PPO
-        # update makes. More passes = faster learning per timestep, but
-        # the policy can drift too far from the data and the KL divergence
-        # blows up. 2 to 4 is the sweet spot in most rocket league setups.
-        ppo_epochs=2,
+        # ppo_epochs: how many passes over the experience buffer the PPO
+        # update makes. NOTE the real math (verified in rlgym_ppo source):
+        # optimizer steps per iteration = ppo_epochs * floor(exp_buffer_size /
+        # ppo_batch_size) = epochs * 3 with our 300k buffer / 100k batch.
+        #
+        # v6: 2 → 3 (6 → 9 optimizer steps per iteration). Mean KL (~0.003)
+        # and clip fraction (~0.03) ran 3-5x BELOW the healthy PPO band for
+        # the entire run — updates were too conservative, which is the real
+        # reason progress slowed. One extra epoch is a bounded 1.5x increase,
+        # triple-guarded by clip_range 0.2, grad-norm clip 0.5, and PPO's
+        # ratio clipping. Expect KL ~0.004-0.007 — still conservative.
+        ppo_epochs=3,
+
+        # Learning rates, passed EXPLICITLY as of v6 (previously left to the
+        # library defaults — which are these same values, so NO change in
+        # behavior). Pinned for two reasons: (1) rlgym_ppo re-applies the
+        # constructor LRs after loading the checkpointed Adam state
+        # (learner.py load() → update_learning_rate), so whatever stands here
+        # is what actually runs after a resume; (2) the run-history JSONs now
+        # record them. v6 deliberately does NOT cut the LR: with only a 1.5x
+        # step increase and KL far below the danger zone, reducing it would
+        # cancel the ppo_epochs change (this exact mistake was caught in
+        # review — see the v6 doc).
+        policy_lr=3e-4,
+        critic_lr=3e-4,
 
         # standardize_returns: normalize advantage estimates by their
         # running standard deviation. Almost always helps stability. Turn
@@ -734,14 +792,27 @@ if __name__ == "__main__":
         # For a real strong bot you want tens of millions; 1 billion is just
         # "effectively unlimited until I stop it manually."
 
-        # changed from 1B to 2B 
-        timestep_limit=2_000_000_000,
+        # changed from 1B to 2B
+        # v6: 2B → 5B. papaya is at ~1.35B and adds ~300M+ per overnight run —
+        # at 2B the Learner would SILENTLY stop itself mid-grind within a
+        # night or two. 5B = "until I Ctrl+C" for the remaining project window.
+        timestep_limit=5_000_000_000,
 
-        # Save a checkpoint every this many timesteps. Frequent saves mean
-        # you can Ctrl+C any time without losing more than a few minutes of
-        # progress. Saved checkpoints accumulate; older ones beyond
-        # n_checkpoints_to_keep (default 5) are auto-deleted by the Learner.
-        save_every_ts=100_000,
+        # Save a checkpoint every this many timesteps.
+        # v6: 100k → 1M. At ~10k steps/sec, 100k meant a ~54MB checkpoint
+        # write every ~10 SECONDS (~200GB of SSD writes per night, plus
+        # iteration time lost to disk). 1M = a save every ~100s; a Ctrl+C or
+        # crash loses at most ~2 minutes of training.
+        save_every_ts=1_000_000,
+
+        # v6 (NEW): keep the last 50 checkpoints instead of the default 5.
+        # With the default, the rotation (learner.py:407-409) deletes all but
+        # the newest 5 saves — by morning your only rollback points would be
+        # the last few minutes or the pre-v6 archive, all-or-nothing. 50 x 1M
+        # = a 50M-step (~1.4h) rollback window at ~2.7GB of disk. The pre-v6
+        # full checkpoint is archived at
+        # diego-bots/checkpoints/_archive/papaya_1024_PRE_V6_1.346B/.
+        n_checkpoints_to_keep=50,
 
         # Where to write checkpoints. Each experiment gets its own subfolder
         # so different experiments do not pollute each other. The Learner

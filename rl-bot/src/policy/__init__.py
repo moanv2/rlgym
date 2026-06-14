@@ -83,6 +83,17 @@ class Policy:
                 self.reason = f"checkpoint missing: {ckpt}"
                 return
 
+            # Read the trained step count from the bundled book-keeping so the
+            # ready-banner always reflects whichever checkpoint is deployed.
+            self._trained_steps: int | None = None
+            try:
+                import json
+                bk = weights_dir / "BOOK_KEEPING_VARS.json"
+                if bk.exists():
+                    self._trained_steps = json.loads(bk.read_text()).get("cumulative_timesteps")
+            except Exception:
+                pass
+
             net = DiscreteFF(self.INPUT_SIZE, self.N_ACTIONS, self.LAYER_SIZES, "cpu")
             # weights_only=True: the file is a pure tensor state_dict, so this is
             # both safe and forward-compatible with torch's changing default.
@@ -116,8 +127,12 @@ class Policy:
             )
             self._index = index
             self.ready = True
+            steps = (
+                f"{self._trained_steps/1e9:.2f}B" if self._trained_steps else "?"
+            )
             print(
-                f"[policy] learned controller ready: papaya_1024 @ 828M (AdvancedObs 107, 1024x3) "
+                f"[policy] learned controller ready: papaya_1024 @ {steps} steps "
+                f"(AdvancedObs 107, 1024x3) "
                 f"({'greedy' if self.DETERMINISTIC else 'stochastic'})"
             )
         except Exception as exc:  # noqa: BLE001

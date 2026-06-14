@@ -1,0 +1,98 @@
+{
+  "label": "pre_v7",
+  "papaya": "C:\\Users\\Diego\\Desktop\\rlgym-root\\rlgym\\diego-bots\\checkpoints\\papaya_1024\\papaya_1024-1781219297349772800\\1919891722",
+  "opponent": "C:\\Users\\Diego\\Desktop\\rlgym-root\\rlgym\\martin-bots\\checkpoints\\CHAMPION_2.1B_recipeD_advanced1024",
+  "rows": [
+    {
+      "spawn_idx": 0,
+      "papaya_color": "blue",
+      "time_to_first_touch_s": 2.8,
+      "first_toucher": "opponent",
+      "ball_adv_3s_uu": -3481.4,
+      "outcome_15s": "none"
+    },
+    {
+      "spawn_idx": 0,
+      "papaya_color": "orange",
+      "time_to_first_touch_s": 2.8,
+      "first_toucher": "opponent",
+      "ball_adv_3s_uu": -3481.7,
+      "outcome_15s": "none"
+    },
+    {
+      "spawn_idx": 1,
+      "papaya_color": "blue",
+      "time_to_first_touch_s": 2.2,
+      "first_toucher": "papaya",
+      "ball_adv_3s_uu": 291.2,
+      "outcome_15s": "none"
+    },
+    {
+      "spawn_idx": 1,
+      "papaya_color": "orange",
+      "time_to_first_touch_s": 2.2,
+      "first_toucher": "papaya",
+      "ball_adv_3s_uu": 291.1,
+      "outcome_15s": "none"
+    },
+    {
+      "spawn_idx": 2,
+      "papaya_color": "blue",
+      "time_to_first_touch_s": 2.8,
+      "first_toucher": "opponent",
+      "ball_adv_3s_uu": 1729.7,
+      "outcome_15s": "papaya"
+    },
+    {
+      "spawn_idx": 2,
+      "papaya_color": "orange",
+      "time_to_first_touch_s": 2.8,
+      "first_toucher": "opponent",
+      "ball_adv_3s_uu": 1723.5,
+      "outcome_15s": "papaya"
+    },
+    {
+      "spawn_idx": 3,
+      "papaya_color": "blue",
+      "time_to_first_touch_s": 2.867,
+      "first_toucher": "opponent",
+      "ball_adv_3s_uu": -2022.3,
+      "outcome_15s": "none"
+    },
+    {
+      "spawn_idx": 3,
+      "papaya_color": "orange",
+      "time_to_first_touch_s": 2.867,
+      "first_toucher": "opponent",
+      "ball_adv_3s_uu": -2081.9,
+      "outcome_15s": "none"
+    },
+    {
+      "spawn_idx": 4,
+      "papaya_color": "blue",
+      "time_to_first_touch_s": 2.8,
+      "first_toucher": "opponent",
+      "ball_adv_3s_uu": -2011.5,
+      "outcome_15s": "none"
+    },
+    {
+      "spawn_idx": 4,
+      "papaya_color": "orange",
+      "time_to_first_touch_s": 2.8,
+      "first_toucher": "opponent",
+      "ball_adv_3s_uu": -2051.7,
+      "outcome_15s": "none"
+    }
+  ],
+  "summary": {
+    "first_possession_rate": 0.2,
+    "mean_touch_time_when_papaya_first_s": 2.2,
+    "mean_touch_time_when_opponent_first_s": 2.817,
+    "mean_ball_adv_3s_uu": -1109.5,
+    "outcomes_15s": {
+      "papaya": 2,
+      "opponent": 0,
+      "none": 8
+    }
+  }
+}

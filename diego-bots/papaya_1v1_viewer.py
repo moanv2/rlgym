@@ -246,6 +246,12 @@ def main() -> None:
         default=0.006,
         help="Seconds to sleep per env.step. 0.006 ~= real time at tick_skip=8; bump to 0.01 if too fast.",
     )
+    p.add_argument(
+        "--no-render",
+        action="store_true",
+        help="Headless: skip rlviser and the real-time throttle. Use for bulk evals "
+        "(e.g. 50+ stochastic games) -- runs sim-speed, no rlviser needed.",
+    )
     args = p.parse_args()
 
     blue_ckpt = resolve_checkpoint(args.blue)
@@ -256,7 +262,7 @@ def main() -> None:
         episodes=args.episodes,
         deterministic=args.deterministic,
         step_delay=args.step_delay,
-        render=True,
+        render=not args.no_render,
     )
 
 

@@ -275,25 +275,61 @@ class DribbleToGoalReward(RewardFunction):
 
 
 class KickoffReward(RewardFunction):
-    """Active only when the ball is still near field center (the kickoff state).
-    Rewards committing hard to the ball off kickoff — touching it first.
+    """v2 (v7 fast-kickoff): TIME-DECAYING first-touch kickoff reward.
 
-    At kickoff the ball is exactly at (0,0,93), so 'ball near center' is a good
-    approximation of 'we are in a kickoff'. Teaches the bot to win the kickoff
-    instead of hesitating. Weight ~0.3.
+    v1 paid a flat 1.0 on every touched step while the ball sat near center —
+    it rewarded touching at all, not touching FAST. v2 implements the core
+    fast-kickoff principle: an early first touch must pay more than a late one.
+
+    Mechanics:
+      - Active only while the ball is still near field center (the kickoff
+        state; at kickoff the ball is exactly at (0,0,93)).
+      - Each car is paid AT MOST ONCE per episode, on its first kickoff touch.
+      - Payment decays linearly with time-to-touch: touch at t=0 pays ~1.0,
+        touch at T_MAX_SECONDS (aligned with KickoffStallCondition) pays 0.
+      - A small directional term favors touches that send the ball toward the
+        opponent half (winning the 50/50, not just reaching it):
+            reward = decay * (0.7 + 0.3 * toward_opponent_factor)
+      - Under ZeroSumReward the opponent's payment is subtracted, so the NET
+        signal is the kickoff time advantage — exactly what we want optimized.
+
+    Stateful per episode (step counters + paid set) — reset() clears them.
+    Weight ~0.5.
     """
 
-    KICKOFF_BALL_DIST = 300.0   # ball still within this flat dist of center → likely a kickoff
+    KICKOFF_BALL_DIST = 300.0   # ball still within this flat dist of center -> kickoff state
+    T_MAX_SECONDS = 4.0         # decay horizon; matches KickoffStallCondition
+    DIR_VEL_SCALE = 2000.0      # ball speed toward opp half that earns the full directional term
+
+    def __init__(self, tick_skip: int = 8):
+        self._seconds_per_step = tick_skip / 120.0
+        self._steps: dict[int, int] = {}   # car_id -> env steps seen this episode
+        self._paid: set[int] = set()       # car_ids already paid this episode
 
     def reset(self, initial_state: GameState) -> None:
-        pass
+        self._steps = {}
+        self._paid = set()
 
     def get_reward(self, player: PlayerData, state: GameState, previous_action: np.ndarray) -> float:
+        cid = player.car_id
+        elapsed_s = self._steps.get(cid, 0) * self._seconds_per_step
+        self._steps[cid] = self._steps.get(cid, 0) + 1
+
         ball = state.ball.position
         ball_near_center = (ball[0] ** 2 + ball[1] ** 2) ** 0.5 < self.KICKOFF_BALL_DIST
-        if not ball_near_center:
+        if not ball_near_center or cid in self._paid or not player.ball_touched:
             return 0.0
-        return 1.0 if player.ball_touched else 0.0
+
+        self._paid.add(cid)
+        decay = max(0.0, 1.0 - elapsed_s / self.T_MAX_SECONDS)
+
+        # Directional term: ball velocity toward the opponent half after contact.
+        # Blue (team 0) attacks +Y, orange attacks -Y.
+        vel_y = float(state.ball.linear_velocity[1])
+        toward_opp = vel_y if player.team_num == 0 else -vel_y
+        dir_factor = float(np.clip(toward_opp / self.DIR_VEL_SCALE, 0.0, 1.0))
+
+        return decay * (0.7 + 0.3 * dir_factor)
 
     def get_final_reward(self, player: PlayerData, state: GameState, previous_action: np.ndarray) -> float:
         return 0.0
