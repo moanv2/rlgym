@@ -12,10 +12,14 @@ Our current strongest 1v1 Rocket League PPO bot (rlgym-ppo + rlgym_sim).
 | **Net** | 1024 x 3 MLP, inferred from the weights |
 | **Deploy** | **Deterministic / argmax** inference — noticeably stronger than sampling for this policy |
 
-## Strength (our deterministic head-to-head eval, fair kickoff, both sides)
-- Beats Diego **papaya 1.34B** and the **2.85B v7** (the v7 by ~80% of decisive games, Wilson 95% CI 0.68–0.88).
-- Beats Marco **2.0B** and Diego **1.18B (512)**.
-- Run it yourself for exact numbers, and spar it **deterministic** for its real level.
+## Strength (thorough eval: 300 games each, mixed start states, both sides, deterministic, Wilson 95% CIs)
+Win-rate over decisive games (draws excluded):
+- Diego **2.85B v7** (his latest): **59%** (95% CI 0.53–0.65) — ahead, but modestly.
+- Diego **papaya 1.34B**: **68%** (0.62–0.73).
+- Diego **1.18B (512)**: **84%** (0.79–0.88).
+- Marco **2.0B**: **67%** (0.61–0.72).
+
+Beats every uploaded teammate bot. Run it yourself and spar it **deterministic** for its real level.
 
 ## Running it
 Loads in any harness that rebuilds a `DiscreteFF` policy (hidden sizes auto-inferred from the
