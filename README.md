@@ -6,7 +6,7 @@ A modular, MLOps-disciplined Rocket League bot trained with **RLGym-PPO + rlgym_
 built for a 1v1 final-class showdown. The codebase covers the full lifecycle: a
 reproducible PPO training stack, headless bot-vs-bot evaluation, a live `rlviser`
 visualizer, and a **single-elimination tournament** harness that ranks the team's
-bots and records match videos.
+bots and records match videos. 
 
 The flagship bot, **papaya_1024**, is a 1024×3 network trained on AdvancedObs to
 ~3.5B steps. Earlier milestones (a 512×3 DefaultObs line up to ~1.3B) are preserved
