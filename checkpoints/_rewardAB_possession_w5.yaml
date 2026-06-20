@@ -1,0 +1,43 @@
+# Reward A/B challenger #2: champion + POSSESSION-EVENT reward at a HIGHER weight (5.0 vs the
+# 2.0 of the first challenger). Tests whether the possession lever is simply under-weighted to
+# show an effect. Same verified reward code, only custom_weights.possession differs. Pure RL,
+# forked from the champion's latest checkpoint, low n_proc to share the idle CPU. PRIVATE.
+experiment_name: exp_rewardAB_possession_w5
+seed: 42
+env: {team_size: 1, spawn_opponents: true, tick_skip: 8}
+obs: {name: advanced}
+action: {name: lookup}
+rewards:
+  recipe: nexto_full
+  possession: true
+  zero_sum: true
+  team_spirit: 0.0
+  opp_scale: 1.0
+  custom_weights:
+    backboard_defense: 0.2
+    ball_away_own_goal: 0.3
+    aerial_touch: 2.0
+    possession: 5.0              # stronger emphasis than challenger #1 (2.0)
+state_setter:
+  name: weighted_sample
+  components:
+    - {name: random, weight: 0.7, ball_rand_speed: true, cars_rand_speed: true, cars_on_ground: false}
+    - {name: default, weight: 0.3}
+terminal: {goal_scored: true, no_touch_timeout_seconds: 10, timeout_seconds: 300}
+learner:
+  arch: large
+  n_proc: 8                      # smaller footprint than challenger #1 (CPU is tighter with 3 runs)
+  ts_per_iteration: 50000
+  ppo_batch_size: 50000
+  ppo_minibatch_size: 50000
+  exp_buffer_size: 150000
+  ppo_epochs: 2
+  ppo_ent_coef: 0.01
+  policy_lr: 0.0001
+  critic_lr: 0.0001
+  standardize_returns: true
+  standardize_obs: false
+  save_every_ts: 1000000
+  timestep_limit: 10000000000
+  min_inference_size: 40
+logging: {wandb: false, sb3_metrics: false}

@@ -1,0 +1,41 @@
+# Challenger Recipe E: = the recipeD champion (nexto reward + lr 1e-4, which just beat lr 3e-4
+# 62.6%/60.3%) EXCEPT bigger rollouts: ts_per_iteration + ppo_batch_size 50k -> 100k.
+# Research (non-reward, rank 4): the repo runs the EARLY-stage 50k; bigger rollouts = more stable
+# updates per collected step for a mature ~2B policy. Warm-started from recipeD. ONE-lever A/B vs recipeD.
+experiment_name: exp_recipeE_bigroll
+seed: 42
+env: {team_size: 1, spawn_opponents: true, tick_skip: 8}
+obs: {name: advanced}
+action: {name: lookup}
+rewards:
+  recipe: nexto_full
+  zero_sum: true
+  team_spirit: 0.0
+  opp_scale: 1.0
+  custom_weights:
+    backboard_defense: 0.2      # = recipeD/sweep1 (held fixed)
+    ball_away_own_goal: 0.3
+    aerial_touch: 2.0
+state_setter:
+  name: weighted_sample
+  components:
+    - {name: random, weight: 0.7, ball_rand_speed: true, cars_rand_speed: true, cars_on_ground: false}
+    - {name: default, weight: 0.3}
+terminal: {goal_scored: true, no_touch_timeout_seconds: 10, timeout_seconds: 300}
+learner:
+  arch: large
+  n_proc: 14
+  ts_per_iteration: 100000     # <-- the lever: 50k -> 100k (bigger rollouts)
+  ppo_batch_size: 100000       # <-- matched to ts_per_iteration
+  ppo_minibatch_size: 50000    # keep (2 minibatches/epoch)
+  exp_buffer_size: 150000      # keep
+  ppo_epochs: 2
+  ppo_ent_coef: 0.01
+  policy_lr: 0.0001            # keep recipeD's winning lr
+  critic_lr: 0.0001
+  standardize_returns: true
+  standardize_obs: false
+  save_every_ts: 5000000
+  timestep_limit: 10000000000  # high limit (NOT 2B — that caused the relaunch loop)
+  min_inference_size: 80
+logging: {wandb: false, sb3_metrics: false}

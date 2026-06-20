@@ -1,0 +1,50 @@
+# Reward A/B challenger: champion + POSSESSION-EVENT reward (anti-passivity lever from the
+# distill-teacher research). ONE-VARIABLE A/B vs the live champion: identical config EXCEPT
+# rewards.possession: true. Pure RL (no distill block) to match the champion's current state
+# (its distill beta annealed to 0 long ago = bit-identical to stock PPO per our validation).
+#
+# FORKED from the champion's weights: seed checkpoints/exp_rewardAB_possession-<unix>/<step> with
+# a copy of the champion's latest checkpoint so _find_latest_checkpoint resumes from it and the
+# challenger continues the strong policy with the new reward (not from scratch).
+#
+# Runs at a LOW n_proc so it fits the idle CPU the single champion run cannot use (architecture-
+# capped), keeping the champion's throughput roughly intact. PRIVATE recipe file, do not push.
+experiment_name: exp_rewardAB_possession
+seed: 42
+env: {team_size: 1, spawn_opponents: true, tick_skip: 8}
+obs: {name: advanced}
+action: {name: lookup}
+rewards:
+  recipe: nexto_full
+  possession: true               # the ONLY change vs the champion
+  zero_sum: true
+  team_spirit: 0.0
+  opp_scale: 1.0
+  custom_weights:
+    backboard_defense: 0.2       # = champion (held fixed)
+    ball_away_own_goal: 0.3      # = champion
+    aerial_touch: 2.0            # = champion
+    possession: 2.0              # new lever weight (sparse event, ~once per few seconds)
+state_setter:
+  name: weighted_sample
+  components:
+    - {name: random, weight: 0.7, ball_rand_speed: true, cars_rand_speed: true, cars_on_ground: false}
+    - {name: default, weight: 0.3}
+terminal: {goal_scored: true, no_touch_timeout_seconds: 10, timeout_seconds: 300}
+learner:
+  arch: large
+  n_proc: 10                     # low footprint: fits idle cores, protects the champion run
+  ts_per_iteration: 50000
+  ppo_batch_size: 50000
+  ppo_minibatch_size: 50000
+  exp_buffer_size: 150000
+  ppo_epochs: 2
+  ppo_ent_coef: 0.01
+  policy_lr: 0.0001              # = champion
+  critic_lr: 0.0001             # = champion
+  standardize_returns: true
+  standardize_obs: false
+  save_every_ts: 1000000
+  timestep_limit: 10000000000
+  min_inference_size: 40
+logging: {wandb: false, sb3_metrics: false}

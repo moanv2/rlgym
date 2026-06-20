@@ -1,0 +1,46 @@
+# Challenger Recipe I: ANTI-PASSIVITY concede asymmetry (reward-research rank 1).
+# IDENTICAL to the recipeH champion's post-anneal state (stock self-play PPO, lr 1e-4,
+# recipeD reward weights) EXCEPT custom_weights.concede -10 -> -7.5: a symmetric
+# concede=-goal drives risk-averse "don't lose" drift; Lucy-SKG runs concede at only 30%
+# of goal. -7.5 (75%) is the conservative first step. Warm-started from recipeH @2.997B
+# (the papaya-beating champion). Clean ONE-VARIABLE A/B vs frozen recipeH_3.0B + papaya.
+# NOTE deliberately NO distill block: recipeH's anneal ended (beta=0 == stock PPO), and a
+# fresh experiment would re-stamp its anneal sidecar and restart beta at 0.3 — not wanted.
+experiment_name: exp_recipeI_concede75
+seed: 42
+env: {team_size: 1, spawn_opponents: true, tick_skip: 8}
+obs: {name: advanced}
+action: {name: lookup}
+rewards:
+  recipe: nexto_full
+  zero_sum: true
+  team_spirit: 0.0
+  opp_scale: 1.0
+  custom_weights:
+    backboard_defense: 0.2      # = recipeH/recipeD champion (held fixed)
+    ball_away_own_goal: 0.3     # = champion
+    aerial_touch: 2.0           # = champion
+    concede: -7.5               # <-- THE variable (default -10): break goal/concede symmetry
+state_setter:
+  name: weighted_sample
+  components:
+    - {name: random, weight: 0.7, ball_rand_speed: true, cars_rand_speed: true, cars_on_ground: false}
+    - {name: default, weight: 0.3}
+terminal: {goal_scored: true, no_touch_timeout_seconds: 10, timeout_seconds: 300}
+learner:
+  arch: large
+  n_proc: 14
+  ts_per_iteration: 50000
+  ppo_batch_size: 50000
+  ppo_minibatch_size: 50000
+  ppo_epochs: 2
+  ppo_ent_coef: 0.01
+  exp_buffer_size: 150000
+  policy_lr: 0.0001             # = champion
+  critic_lr: 0.0001             # = champion
+  standardize_returns: true
+  standardize_obs: false
+  save_every_ts: 1000000
+  timestep_limit: 10000000000
+  min_inference_size: 80
+logging: {wandb: false, sb3_metrics: false}

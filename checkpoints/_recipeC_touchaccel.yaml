@@ -1,0 +1,52 @@
+# Challenger Recipe C: swap the flat TouchBall (weight 5, farmable by aimless taps) for
+# Lucy-SKG's outcome-scaled Touch-Ball-to-Goal-Acceleration (only goalward touches pay).
+# This is the #2 highest-EV change from the reward research (checkpoints/_reward_research.md)
+# and Lucy's signature upgrade over Necto/Nexto.
+#
+# CLEAN ONE-VARIABLE A/B vs the current champion (sweep1): identical to sweep1's config
+# EXCEPT `touch_accel: true` (+ its weight). custom_weights match sweep1 so the touch swap
+# is the only difference. Warm-start from the champion at launch (see procedure below) and
+# A/B vs the FROZEN champion + Diego at >=200 games (bump to ~400 if borderline).
+#
+# LAUNCH PROCEDURE (when sweep2's slot frees):
+#   1) copy the then-current champion's latest checkpoint into
+#      checkpoints/exp_recipeC_touchaccel-1000000000000000003/<step>/
+#   2) Start-Process detached: python -m rlbot.training.train --config checkpoints\_recipeC_touchaccel.yaml
+#      (env PYTHONPATH=src, WANDB_MODE=offline, AboveNormal) and add it to _watchdog.py RUNS.
+experiment_name: exp_recipeC_touchaccel
+seed: 42
+env: {team_size: 1, spawn_opponents: true, tick_skip: 8}
+obs: {name: advanced}
+action: {name: lookup}
+rewards:
+  recipe: nexto_full
+  touch_accel: true             # <-- the only change vs sweep1: flat touch -> touch-to-goal-acceleration
+  zero_sum: true
+  team_spirit: 0.0
+  opp_scale: 1.0
+  custom_weights:
+    backboard_defense: 0.2      # = sweep1 (held fixed so touch is the only variable)
+    ball_away_own_goal: 0.3     # = sweep1
+    aerial_touch: 2.0           # = sweep1
+    touch_accel: 1.5            # new: outcome-scaled touch reward (Lucy ~0.25 on goal=10; we run hotter on our anchor)
+state_setter:
+  name: weighted_sample
+  components:
+    - {name: random, weight: 0.7, ball_rand_speed: true, cars_rand_speed: true, cars_on_ground: false}
+    - {name: default, weight: 0.3}
+terminal: {goal_scored: true, no_touch_timeout_seconds: 10, timeout_seconds: 300}
+learner:
+  arch: large
+  n_proc: 14
+  ts_per_iteration: 50000
+  ppo_batch_size: 50000
+  ppo_minibatch_size: 50000
+  exp_buffer_size: 150000
+  ppo_epochs: 2
+  ppo_ent_coef: 0.01
+  standardize_returns: true
+  standardize_obs: false
+  save_every_ts: 5000000
+  timestep_limit: 2000000000
+  min_inference_size: 80
+logging: {wandb: false, sb3_metrics: false}

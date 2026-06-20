@@ -61,3 +61,20 @@ htmlcov/
 .coverage
 coverage.xml
 *.cover
+
+# Third-party RL tools + extracted game assets (licensing/copyright) — NEVER commit, repo may be public
+rlviser*.exe
+umodel*.exe
+RLUPKTool*.exe
+RLUPKTool*.zip
+RLUPKTool*.tar.gz
+assets/
+cache/
+assets.path
+*.upk
+settings.txt
+seer_text.txt
+# umodel / rlviser runtime files dropped at repo root
+SDL2*.dll
+LICENSE.txt
+readme.txt

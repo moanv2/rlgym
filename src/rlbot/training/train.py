@@ -79,11 +79,27 @@ def train(cfg: Config) -> None:
     run_dir = CHECKPOINT_ROOT / cfg.experiment_name
     _snapshot_run_metadata(cfg, run_dir)
 
-    env_builder = make_env_builder(cfg.env, cfg.to_dict())
+    cfg_dict = cfg.to_dict()
+    pool_spec = cfg_dict.get("opponent_pool")
+    distill_spec = cfg_dict.get("distill")
+    assert not (pool_spec and distill_spec), (
+        "opponent_pool (best-response) and distill (kickstarting) are mutually exclusive: "
+        "best-response sparring drives a frozen opponent in the env, distillation trains on "
+        "full-speed self-play. Pick one."
+    )
+    if pool_spec:
+        # best-response / opponent-pool training: team-1 is a frozen policy from the pool
+        from rlbot.spar_env import SparEnvBuilder
+
+        env_builder = SparEnvBuilder(pool_spec, cfg_dict)
+        log.info(
+            f"[bold magenta]Best-response training[/] vs a frozen opponent pool ({len(pool_spec)} opponents)"
+        )
+    else:
+        # self-play (also the rollout mode for distillation: the teacher only runs in the update)
+        env_builder = make_env_builder(cfg.env, cfg_dict)
 
     # --- rlgym-ppo Learner ---
-    from rlgym_ppo import Learner
-
     L = cfg.learner
     arch = get_layer_sizes(L.get("arch", "small"))
 
@@ -108,8 +124,7 @@ def train(cfg: Config) -> None:
         )
         log.info(f"wandb run initialized at entity='{wandb_entity}' project='{wandb_run.project}'")
 
-    learner = Learner(
-        env_builder,
+    learner_kwargs = dict(
         n_proc=int(L.get("n_proc", 8)),
         min_inference_size=int(L.get("min_inference_size", 80)),
         metrics_logger=None,
@@ -119,6 +134,8 @@ def train(cfg: Config) -> None:
         ppo_minibatch_size=int(L.get("ppo_minibatch_size", 50_000)),
         ppo_ent_coef=float(L.get("ppo_ent_coef", 0.01)),
         ppo_epochs=int(L.get("ppo_epochs", 2)),
+        policy_lr=float(L.get("policy_lr", 3e-4)),
+        critic_lr=float(L.get("critic_lr", 3e-4)),
         standardize_returns=bool(L.get("standardize_returns", True)),
         standardize_obs=bool(L.get("standardize_obs", False)),
         save_every_ts=int(L.get("save_every_ts", 1_000_000)),
@@ -134,6 +151,24 @@ def train(cfg: Config) -> None:
         critic_layer_sizes=arch,
         render=False,
     )
+
+    if distill_spec:
+        # Kickstarting: same self-play training as stock, plus an annealed teacher-KL nudge
+        # toward a stronger bot (teacher runs only in the batched PPO update -> full speed).
+        from rlbot.training.distill import DistillLearner
+
+        log.info(
+            f"[bold magenta]Distillation[/] kickstarting toward teacher "
+            f"'{distill_spec['teacher']}' (beta {distill_spec.get('beta', 0.3)} -> "
+            f"{distill_spec.get('beta_end', 0.0)} over "
+            f"{int(distill_spec.get('beta_anneal_steps', 150_000_000)):,} steps)"
+        )
+        learner = DistillLearner(env_builder, distill=distill_spec, **learner_kwargs)
+    else:
+        from rlgym_ppo import Learner
+
+        learner = Learner(env_builder, **learner_kwargs)
+
     log.info(
         f"[bold green]Starting training[/]: {cfg.experiment_name}  arch={arch}  "
         f"timestep_limit={L.get('timestep_limit'):,}"

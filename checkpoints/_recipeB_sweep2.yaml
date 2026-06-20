@@ -1,0 +1,40 @@
+# Sweep challenger #2: push the VALIDATED lighter-defense direction further.
+# sweep1 (less defensive) held 66% vs Diego while the full-defensive champion REGRESSED to 49%
+# (over-defensive -> passive drift). Hypothesis: cut the defensive rewards further -> even more
+# committal/offensive play -> more wins. Warm-started from sweep1 (our best); A/B vs sweep1.
+# If sweep2 < sweep1, we've passed the sweet spot and sweep1's level was right.
+experiment_name: exp_recipeB_sweep2
+seed: 42
+env: {team_size: 1, spawn_opponents: true, tick_skip: 8}
+obs: {name: advanced}
+action: {name: lookup}
+rewards:
+  recipe: nexto_full
+  zero_sum: true
+  team_spirit: 0.0
+  opp_scale: 1.0
+  custom_weights:
+    backboard_defense: 0.1      # sweep1 0.2 -> 0.1 (even less backboard camping)
+    ball_away_own_goal: 0.15    # sweep1 0.3 -> 0.15 (even less conservative)
+    aerial_touch: 2.5           # sweep1 2.0 -> 2.5 (more aerial aggression / scoring chances)
+state_setter:
+  name: weighted_sample
+  components:
+    - {name: random, weight: 0.7, ball_rand_speed: true, cars_rand_speed: true, cars_on_ground: false}
+    - {name: default, weight: 0.3}
+terminal: {goal_scored: true, no_touch_timeout_seconds: 10, timeout_seconds: 300}
+learner:
+  arch: large
+  n_proc: 14
+  ts_per_iteration: 50000
+  ppo_batch_size: 50000
+  ppo_minibatch_size: 50000
+  exp_buffer_size: 150000
+  ppo_epochs: 2
+  ppo_ent_coef: 0.01
+  standardize_returns: true
+  standardize_obs: false
+  save_every_ts: 5000000
+  timestep_limit: 2000000000
+  min_inference_size: 80
+logging: {wandb: false, sb3_metrics: false}

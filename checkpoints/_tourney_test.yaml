@@ -1,0 +1,3 @@
+bots:
+  - {label: basics_250M, policy: checkpoints/_eval_snapshots/basics_250M, obs: advanced}
+  - {label: diego_1.18B, policy: checkpoints/_eval_snapshots/diego_1.18B, obs: default}

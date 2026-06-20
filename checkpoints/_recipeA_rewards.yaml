@@ -1,0 +1,25 @@
+# Recipe A challenger reward set — the top-priority experiment from the optimization research.
+# Hypothesis: the offense recipe went passive because it cut ball-pursuit (0.10->0.03) and
+# added a defensive 'save' reward. Recipe A re-densifies pursuit + touch and REMOVES save.
+# Run as a CHALLENGER (fork from the champion, new experiment_name) and A/B vs the champion
+# in the eval harness; adopt only if decisive winrate beats it by >5 pts over >=200 games.
+zero_sum: true
+team_spirit: 0.0
+opp_scale: 1.0
+components:
+  - name: velocity_player_to_ball
+    weight: 0.10          # was 0.03 — restore the per-step ball-pursuit gradient (passivity fix)
+  - name: velocity_ball_to_goal
+    weight: 0.6
+  - name: touch_ball
+    weight: 0.05
+    kwargs:
+      aerial_weight: 1.0  # reward touch height/control (equiv to 0.0 for ground touches)
+  - name: event
+    weight: 12.0
+    kwargs:
+      goal: 1.0
+      concede: -1.0
+      shot: 0.15
+      demo: 0.1
+      # save REMOVED (was 0.3) — it rewarded reactive waiting / camping

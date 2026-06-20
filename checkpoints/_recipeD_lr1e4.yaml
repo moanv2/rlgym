@@ -1,0 +1,42 @@
+# Challenger Recipe D: IDENTICAL to the sweep1 champion EXCEPT policy/critic lr 3e-4 -> 1e-4.
+# 3e-4 is the untuned rlgym-ppo library default; 1e-4 is the community-proven value (Necto) and
+# is gentler refinement for a mature ~1.8B policy (config + non-reward + efficiency research all flag it).
+# Warm-started from sweep1 -> Learner.load() re-applies the new lr to the loaded optimizer.
+# Clean ONE-VARIABLE A/B vs sweep1 (lr only; same reward). Safe overnight lever (smaller step size).
+experiment_name: exp_recipeD_lr1e4
+seed: 42
+env: {team_size: 1, spawn_opponents: true, tick_skip: 8}
+obs: {name: advanced}
+action: {name: lookup}
+rewards:
+  recipe: nexto_full
+  zero_sum: true
+  team_spirit: 0.0
+  opp_scale: 1.0
+  custom_weights:
+    backboard_defense: 0.2      # = sweep1 (held fixed; lr is the only variable)
+    ball_away_own_goal: 0.3     # = sweep1
+    aerial_touch: 2.0           # = sweep1
+state_setter:
+  name: weighted_sample
+  components:
+    - {name: random, weight: 0.7, ball_rand_speed: true, cars_rand_speed: true, cars_on_ground: false}
+    - {name: default, weight: 0.3}
+terminal: {goal_scored: true, no_touch_timeout_seconds: 10, timeout_seconds: 300}
+learner:
+  arch: large
+  n_proc: 14
+  ts_per_iteration: 50000
+  ppo_batch_size: 50000
+  ppo_minibatch_size: 50000
+  exp_buffer_size: 150000
+  ppo_epochs: 2
+  ppo_ent_coef: 0.01
+  policy_lr: 0.0001           # <-- the only change vs sweep1 (was the 3e-4 default)
+  critic_lr: 0.0001           # <--
+  standardize_returns: true
+  standardize_obs: false
+  save_every_ts: 5000000
+  timestep_limit: 10000000000   # raised from 2B: runs hit 2B, exited, and relaunch-looped with no new save
+  min_inference_size: 80
+logging: {wandb: false, sb3_metrics: false}

@@ -1,0 +1,47 @@
+# Challenger Recipe K: KRC OFFENSIVE-POTENTIAL reward (reward-research rank 3, Lucy-SKG's
+# signature upgrade over the nexto stack). IDENTICAL to the recipeH champion EXCEPT the two
+# ADDITIVE position terms (AlignBallGoal in the base + BackboardDefenseReward) are REPLACED by
+# one KRC geometric-mean Offensive-Potential reward that can't be farmed by camping/standoffs
+# (the root cause the research flagged behind our defensive regression). rewards.krc: true.
+# Warm-started from recipeH. ONE structural variable. The 5 micro-tweaks (sweep2/touch-accel/
+# bigrollouts/lowent/concede) all tied or lost -> this is the one genuinely-different lever left.
+# Retire for the distillation run the moment Diego pushes his new advanced-obs bot.
+experiment_name: exp_recipeK_krc
+seed: 42
+env: {team_size: 1, spawn_opponents: true, tick_skip: 8}
+obs: {name: advanced}
+action: {name: lookup}
+rewards:
+  recipe: nexto_full
+  zero_sum: true
+  team_spirit: 0.0
+  opp_scale: 1.0
+  krc: true                     # <-- THE variable: drop AlignBallGoal + BackboardDefense, add KRC
+  custom_weights:
+    ball_away_own_goal: 0.3     # = recipeH champion (kept)
+    aerial_touch: 2.0           # = champion (kept)
+    krc_weight: 0.6             # Lucy-SKG Offensive-Potential ~0.6 (re-scaled to our anchor)
+    # backboard_defense intentionally omitted — BackboardDefense is removed when krc=true
+state_setter:
+  name: weighted_sample
+  components:
+    - {name: random, weight: 0.7, ball_rand_speed: true, cars_rand_speed: true, cars_on_ground: false}
+    - {name: default, weight: 0.3}
+terminal: {goal_scored: true, no_touch_timeout_seconds: 10, timeout_seconds: 300}
+learner:
+  arch: large
+  n_proc: 14
+  ts_per_iteration: 50000
+  ppo_batch_size: 50000
+  ppo_minibatch_size: 50000
+  ppo_epochs: 2
+  ppo_ent_coef: 0.01
+  exp_buffer_size: 150000
+  policy_lr: 0.0001
+  critic_lr: 0.0001
+  standardize_returns: true
+  standardize_obs: false
+  save_every_ts: 1000000
+  timestep_limit: 10000000000
+  min_inference_size: 80
+logging: {wandb: false, sb3_metrics: false}

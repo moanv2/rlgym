@@ -1,0 +1,44 @@
+# SMOKE test for distillation (tiny, fresh policy, real papaya teacher). Verifies the full
+# DistillLearner pipeline end-to-end: teacher load + batched forward on real 107-dim obs +
+# annealed-KL update + a few iterations + clean exit. NOT a real run (small arch, 2 procs).
+experiment_name: exp_smoke_distill
+seed: 42
+env: {team_size: 1, spawn_opponents: true, tick_skip: 8}
+obs: {name: advanced}
+action: {name: lookup}
+distill:
+  teacher: checkpoints/_eval_snapshots/diego_papaya_1.34B
+  obs: advanced
+  dim: 107
+  beta: 0.3
+  beta_end: 0.0
+  beta_anneal_steps: 100000
+rewards:
+  recipe: nexto_full
+  zero_sum: true
+  team_spirit: 0.0
+  opp_scale: 1.0
+  custom_weights: {backboard_defense: 0.2, ball_away_own_goal: 0.3, aerial_touch: 2.0}
+state_setter:
+  name: weighted_sample
+  components:
+    - {name: random, weight: 0.7, ball_rand_speed: true, cars_rand_speed: true, cars_on_ground: false}
+    - {name: default, weight: 0.3}
+terminal: {goal_scored: true, no_touch_timeout_seconds: 10, timeout_seconds: 300}
+learner:
+  arch: small               # tiny student for speed; teacher (papaya) is large -> KL still well-defined
+  n_proc: 2
+  ts_per_iteration: 2500
+  ppo_batch_size: 2500
+  ppo_minibatch_size: 2500
+  exp_buffer_size: 5000
+  ppo_epochs: 2
+  ppo_ent_coef: 0.01
+  policy_lr: 0.0001
+  critic_lr: 0.0001
+  standardize_returns: true
+  standardize_obs: false
+  save_every_ts: 999999999  # never save during the smoke
+  timestep_limit: 7500      # ~3 iterations then clean exit
+  min_inference_size: 20
+logging: {wandb: false, sb3_metrics: false}

@@ -1,0 +1,38 @@
+# Epochs A/B challenger: IDENTICAL to the champion (Recipe A recipe) except ppo_epochs 2->3,
+# to test if extra learning-per-step (using the idle GPU) beats more raw steps.
+# Forked from the champion @ 1.32B; compare vs champion at EQUAL step counts vs Diego.
+experiment_name: exp_epochs3
+seed: 42
+env: {team_size: 1, spawn_opponents: true, tick_skip: 8}
+obs: {name: advanced}
+action: {name: lookup}
+rewards:
+  zero_sum: true
+  team_spirit: 0.0
+  opp_scale: 1.0
+  components:
+    - {name: velocity_player_to_ball, weight: 0.10}
+    - {name: velocity_ball_to_goal, weight: 0.6}
+    - {name: touch_ball, weight: 0.05, kwargs: {aerial_weight: 1.0}}
+    - {name: event, weight: 12.0, kwargs: {goal: 1.0, concede: -1.0, shot: 0.15, demo: 0.1}}
+state_setter:
+  name: weighted_sample
+  components:
+    - {name: random, weight: 0.7, ball_rand_speed: true, cars_rand_speed: true, cars_on_ground: false}
+    - {name: default, weight: 0.3}
+terminal: {goal_scored: true, no_touch_timeout_seconds: 10, timeout_seconds: 300}
+learner:
+  arch: large
+  n_proc: 14
+  ts_per_iteration: 50000
+  ppo_batch_size: 50000
+  ppo_minibatch_size: 50000
+  exp_buffer_size: 150000
+  ppo_epochs: 3        # <-- the only change vs the champion (epochs=2)
+  ppo_ent_coef: 0.01
+  standardize_returns: true
+  standardize_obs: false
+  save_every_ts: 5000000
+  timestep_limit: 2000000000
+  min_inference_size: 80
+logging: {wandb: false, sb3_metrics: false}

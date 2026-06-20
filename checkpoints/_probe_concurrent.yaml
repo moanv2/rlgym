@@ -1,0 +1,30 @@
+# Throughput PROBE: a 2nd training run to measure if the idle CPU can absorb concurrent
+# training (champion + challenger). Fresh, throwaway (we kill it after measuring). n_proc
+# kept modest so it shares cores with the champion rather than fully oversubscribing.
+experiment_name: exp_probe_concurrent
+seed: 7
+env: {team_size: 1, spawn_opponents: true, tick_skip: 8}
+obs: {name: advanced}
+action: {name: lookup}
+rewards: {recipe: nexto_full, zero_sum: true, team_spirit: 0.0, opp_scale: 1.0}
+state_setter:
+  name: weighted_sample
+  components:
+    - {name: random, weight: 0.7, ball_rand_speed: true, cars_rand_speed: true, cars_on_ground: false}
+    - {name: default, weight: 0.3}
+terminal: {goal_scored: true, no_touch_timeout_seconds: 10, timeout_seconds: 300}
+learner:
+  arch: large
+  n_proc: 8
+  ts_per_iteration: 50000
+  ppo_batch_size: 50000
+  ppo_minibatch_size: 50000
+  exp_buffer_size: 150000
+  ppo_epochs: 2
+  ppo_ent_coef: 0.01
+  standardize_returns: true
+  standardize_obs: false
+  save_every_ts: 5000000
+  timestep_limit: 50000000
+  min_inference_size: 80
+logging: {wandb: false, sb3_metrics: false}
