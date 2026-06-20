@@ -37,7 +37,7 @@ N_ACTIONS = 90      # LookupAction (shared by every bot on the team)
 # their weights are downloaded.
 ROSTER_CONFIG: list[dict[str, str]] = [
     {"owner": "diego",  "name": "Diego — papaya_1024",     "path": "diego-bots/checkpoints/papaya_1024"},
-    {"owner": "martin", "name": "Martin — champion 2.1B",  "path": "martin-bots/checkpoints/CHAMPION_2.1B_recipeD_advanced1024"},
+    {"owner": "martin", "name": "Martin — champion 8.23B", "path": "martin-bots/checkpoints/CHAMPION_8.23B_advanced1024"},
     {"owner": "marian", "name": "Marian — 1.35B",          "path": "checkpoints/marian_iterations/1349081288"},
     {"owner": "nachi",  "name": "Nachi",                   "path": "teammates/nachi"},
     {"owner": "marco",  "name": "Marco",                   "path": "teammates/marco"},
