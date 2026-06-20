@@ -1,20 +1,20 @@
 {
-    "cumulative_timesteps": 8395716740,
-    "cumulative_model_updates": 1007164,
-    "policy_average_reward": -10.03101267575088,
-    "epoch": 167871,
-    "ts_since_last_save": 1000124,
+    "cumulative_timesteps": 8489728994,
+    "cumulative_model_updates": 1018444,
+    "policy_average_reward": -4.160274603968304,
+    "epoch": 169751,
+    "ts_since_last_save": 1000130,
     "reward_running_stats": {
         "mean": [
-            -0.06296199937722102
+            -0.049626438685102636
         ],
         "var": [
-            1318535564405.5532
+            1336235369464.6328
         ],
         "shape": [
             1
         ],
-        "count": 25183650
+        "count": 25465650
     },
     "wandb_run_id": "twotz849",
     "wandb_project": "rlgym-finalproject",
