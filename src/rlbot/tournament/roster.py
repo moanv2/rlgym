@@ -40,7 +40,7 @@ ROSTER_CONFIG: list[dict[str, str]] = [
     {"owner": "martin", "name": "Martin — champion 8.23B", "path": "martin-bots/checkpoints/CHAMPION_8.23B_advanced1024"},
     {"owner": "marian", "name": "Marian — 1.35B",          "path": "checkpoints/marian_iterations/1349081288"},
     {"owner": "nachi",  "name": "Nachi",                   "path": "teammates/nachi"},
-    {"owner": "marco",  "name": "Marco",                   "path": "teammates/marco"},
+    {"owner": "marco",  "name": "Marco — 2.0B",            "path": "teammates/marco"},
 ]
 
 
