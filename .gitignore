@@ -67,3 +67,8 @@ coverage.xml
 
 # Binaries
 *.exe
+
+# Shared bot checkpoint for teammates (tracked via Git LFS).
+# Placed last so it overrides the checkpoints/* and *.pt rules above.
+!checkpoints/shared/
+!checkpoints/shared/**

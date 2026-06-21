@@ -1,0 +1,172 @@
+{
+    "cumulative_timesteps": 2896166208,
+    "cumulative_model_updates": 269220,
+    "policy_average_reward": 14.131308892255447,
+    "epoch": 29917,
+    "ts_since_last_save": 19600396,
+    "reward_running_stats": {
+        "mean": [
+            12.121268844053537
+        ],
+        "var": [
+            446391192873.89557
+        ],
+        "shape": [
+            1
+        ],
+        "count": 4490100
+    },
+    "wandb_run_id": "uhaxt5x8",
+    "wandb_project": "rlgym-finalproject",
+    "wandb_entity": "nachi-moreno-ie-university",
+    "wandb_group": "exp_011_economy_defense",
+    "wandb_config": {
+        "experiment_name": "exp_011_economy_defense",
+        "seed": 42,
+        "env": {
+            "team_size": 1,
+            "spawn_opponents": true,
+            "tick_skip": 8
+        },
+        "obs": {
+            "name": "advanced"
+        },
+        "action": {
+            "name": "lookup"
+        },
+        "rewards": {
+            "zero_sum": true,
+            "team_spirit": 0,
+            "opp_scale": 1,
+            "components": [
+                {
+                    "name": "speed_toward_ball",
+                    "weight": 4.5
+                },
+                {
+                    "name": "face_ball",
+                    "weight": 0.25
+                },
+                {
+                    "name": "in_air",
+                    "weight": 0.6
+                },
+                {
+                    "name": "double_jump",
+                    "weight": 0.5
+                },
+                {
+                    "weight": 6,
+                    "name": "velocity_ball_to_goal"
+                },
+                {
+                    "name": "strong_touch",
+                    "weight": 1.5
+                },
+                {
+                    "name": "shot_toward_goal",
+                    "weight": 8
+                },
+                {
+                    "name": "air_touch",
+                    "weight": 2.5
+                },
+                {
+                    "name": "align_ball_goal",
+                    "weight": 2
+                },
+                {
+                    "weight": 4,
+                    "name": "big_boost_proximity"
+                },
+                {
+                    "name": "boost_reserve",
+                    "weight": 2
+                },
+                {
+                    "name": "ball_away_from_own_goal",
+                    "weight": 2
+                },
+                {
+                    "name": "backboard_defense",
+                    "weight": 1.5
+                },
+                {
+                    "name": "recovery",
+                    "weight": 0.75
+                },
+                {
+                    "name": "event",
+                    "weight": 80,
+                    "kwargs": {
+                        "goal": 1,
+                        "concede": -1,
+                        "shot": 0.75,
+                        "save": 0.5,
+                        "boost_pickup": 0.5
+                    }
+                }
+            ]
+        },
+        "state_setter": {
+            "components": [
+                {
+                    "weight": 0.45,
+                    "ball_rand_speed": true,
+                    "cars_rand_speed": true,
+                    "cars_on_ground": false,
+                    "name": "random"
+                },
+                {
+                    "name": "shooting",
+                    "weight": 0.2
+                },
+                {
+                    "weight": 0.2,
+                    "name": "aerial"
+                },
+                {
+                    "name": "default",
+                    "weight": 0.15
+                }
+            ],
+            "name": "weighted_sample",
+            "ball_rand_speed": true,
+            "cars_rand_speed": true,
+            "cars_on_ground": false
+        },
+        "terminal": {
+            "no_touch_timeout_seconds": 10,
+            "timeout_seconds": 300,
+            "goal_scored": true
+        },
+        "learner": {
+            "standardize_obs": false,
+            "ppo_minibatch_size": 25000,
+            "timestep_limit": 3000000000,
+            "ppo_batch_size": 100000,
+            "exp_buffer_size": 300000,
+            "n_checkpoints_to_keep": 10,
+            "critic_lr": 0.0001,
+            "ts_per_iteration": 100000,
+            "add_unix_timestamp": false,
+            "save_every_ts": 20000000,
+            "n_proc": 5,
+            "ppo_epochs": 3,
+            "standardize_returns": true,
+            "init_from": "exp_010_balance",
+            "min_inference_size": 80,
+            "ppo_ent_coef": 0.01,
+            "policy_lr": 0.0001,
+            "arch": "large"
+        },
+        "logging": {
+            "wandb_run": null,
+            "sb3_metrics": false,
+            "wandb": true,
+            "wandb_project": "rlgym-finalproject",
+            "wandb_entity": "nachi-moreno-ie-university",
+            "wandb_group": "exp_011_economy_defense"
+        }
+    }
+}
