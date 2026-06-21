@@ -39,8 +39,8 @@ HISTORY_DIR = REPO_ROOT / "history_and_summary"
 # Full team, one bot per person (Martin = his strongest, 8.23B). Nachi included
 # now that he pushed the real binary. Same field as the final ranking.
 FIELD = [
-    {"owner": "diego",  "name": "Diego — papaya 3.5B",  "path": "diego-bots/checkpoints/papaya_1024"},
-    {"owner": "martin", "name": "Martin — champ 8.23B", "path": "martin-bots/checkpoints/CHAMPION_8.23B_advanced1024"},
+    {"owner": "diego",  "name": "Diego — papaya v7",    "path": "diego-bots/checkpoints/papaya_1024"},
+    {"owner": "martin", "name": "Martin — 9B",          "path": "martin-bots/checkpoints/CHAMPION_9.0B_advanced1024"},
     {"owner": "nachi",  "name": "Nachi — 2.9B",         "path": "teammates/nachi"},
     {"owner": "marco",  "name": "Marco — 2.0B",         "path": "teammates/marco"},
     {"owner": "marian", "name": "Marian — 1.35B",       "path": "checkpoints/marian_iterations/1349081288"},
@@ -159,12 +159,20 @@ def main() -> None:
                 for b in bots}
     matchups = []
     total_games = args.games * (len(bots) * (len(bots) - 1) // 2)
+    progress = HISTORY_DIR / f"_progress_{args.mode}.json"
+    done_pairs = set()
+    if progress.exists():
+        _p = json.loads(progress.read_text(encoding="utf-8"))
+        agg = _p["agg"]; matchups = _p["matchups"]; done_pairs = {tuple(k) for k in _p["done_pairs"]}
+        print(f"  [resume] {len(done_pairs)} pairings already done -> skipping them")
     print(f"\n>>> {args.mode.upper()} round-robin: {len(bots)} bots, "
           f"{len(bots)*(len(bots)-1)//2} pairings x {args.games} = {total_games} games\n")
 
     g_done = 0
     t_start = time.time()
     for a, b in itertools.combinations(bots, 2):
+        if tuple(sorted([a.owner, b.owner])) in done_pairs:
+            continue
         a_goals = b_goals = 0
         for g in range(args.games):
             a_is_blue = (g % 2 == 0)
@@ -203,6 +211,9 @@ def main() -> None:
                          "margin": a_goals - b_goals})
         print(f"  {a.owner:<8} vs {b.owner:<8}  goals {a_goals}-{b_goals}  "
               f"({g_done}/{total_games} games, {time.time()-t_start:.0f}s)")
+        done_pairs.add(tuple(sorted([a.owner, b.owner])))
+        progress.write_text(json.dumps({"agg": agg, "matchups": matchups,
+            "done_pairs": [list(k) for k in done_pairs]}), encoding="utf-8")
 
     for env in env_cache.values():
         env.close()
@@ -235,6 +246,8 @@ def main() -> None:
     HISTORY_DIR.mkdir(parents=True, exist_ok=True)
     path = HISTORY_DIR / f"tournament_stats_{args.mode}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
     path.write_text(json.dumps(out, indent=2), encoding="utf-8")
+    if progress.exists():
+        progress.unlink()
     print(f"\nWrote stats JSON: {path}")
     print(f"Total wall time: {time.time()-t_start:.0f}s")
 
