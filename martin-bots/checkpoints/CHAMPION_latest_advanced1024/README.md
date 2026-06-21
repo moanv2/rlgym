@@ -1,3 +1,3 @@
-﻿# Martin champion - LATEST (auto-refreshed)
+﻿# Martin champion - auto-refresh latest
 
-~8.86B timesteps (step 8862778488). AdvancedObs 107-dim, LookupAction 90, 1024x3 MLP, deploy DETERMINISTIC. Same recipe as CHAMPION_8.23B_advanced1024 (see that README + checkpoints/_recipeH_distill.yaml). This folder is auto-updated about every 3h while training continues, so it is always the freshest champion for tournaments.
+~8.89B timesteps (step 8892782254). AdvancedObs 107-dim, LookupAction 90, 1024x3 MLP, deploy DETERMINISTIC. Same recipe as CHAMPION_8.23B_advanced1024 (see checkpoints/_recipeH_distill.yaml).
