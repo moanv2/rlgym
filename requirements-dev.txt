@@ -5,3 +5,6 @@ pytest-cov==5.0.0
 ruff==0.5.6
 mypy==1.11.1
 pre-commit==3.8.0
+
+# Tournament analytics charts (rlbot.tournament.charts)
+matplotlib>=3.8
