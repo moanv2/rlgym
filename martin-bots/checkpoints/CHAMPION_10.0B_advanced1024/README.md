@@ -1,3 +1,3 @@
-﻿# Martin champion - 10B milestone
+﻿# Martin champion - 10B FINAL
 
-~10B timesteps (step 10000926832). AdvancedObs 107-dim, LookupAction 90, 1024x3 MLP, deploy DETERMINISTIC. Same recipe as CHAMPION_8.23B_advanced1024 (see checkpoints/_recipeH_distill.yaml).
+Final frozen bot. ~10.04B timesteps (step 10042132490). Training was stopped at this checkpoint on 2026-06-22. AdvancedObs 107 dim in, LookupAction 90 out, 1024x3 MLP actor critic, deploy DETERMINISTIC (argmax). Same recipe as the earlier champions (see checkpoints/_recipeH_distill.yaml). Number 1 in the team tournament in both deploy modes.
