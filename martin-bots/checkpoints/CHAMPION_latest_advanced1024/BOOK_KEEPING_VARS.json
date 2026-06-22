@@ -1,20 +1,20 @@
 {
-    "cumulative_timesteps": 9940918658,
-    "cumulative_model_updates": 1192564,
-    "policy_average_reward": 5.855840629037688,
-    "epoch": 198771,
-    "ts_since_last_save": 1000122,
+    "cumulative_timesteps": 10031931008,
+    "cumulative_model_updates": 1203474,
+    "policy_average_reward": 8.985195066856612,
+    "epoch": 200590,
+    "ts_since_last_save": 1000124,
     "reward_running_stats": {
         "mean": [
-            -0.06721325662912177
+            -0.059167312681205564
         ],
         "var": [
-            1608693131883.4446
+            1625737124388.0215
         ],
         "shape": [
             1
         ],
-        "count": 29818650
+        "count": 30091650
     },
     "wandb_run_id": "twotz849",
     "wandb_project": "rlgym-finalproject",
@@ -24,9 +24,9 @@
         "experiment_name": "exp_003_long_run",
         "seed": 42,
         "env": {
+            "team_size": 1,
             "spawn_opponents": true,
-            "tick_skip": 8,
-            "team_size": 1
+            "tick_skip": 8
         },
         "obs": {
             "name": "advanced"
@@ -68,11 +68,11 @@
             "cars_on_ground": false,
             "components": [
                 {
-                    "cars_rand_speed": true,
                     "cars_on_ground": false,
                     "name": "random",
                     "weight": 0.7,
-                    "ball_rand_speed": true
+                    "ball_rand_speed": true,
+                    "cars_rand_speed": true
                 },
                 {
                     "weight": 0.3,
@@ -83,32 +83,32 @@
             "ball_rand_speed": true
         },
         "terminal": {
+            "goal_scored": true,
             "no_touch_timeout_seconds": 10,
-            "timeout_seconds": 300,
-            "goal_scored": true
+            "timeout_seconds": 300
         },
         "learner": {
-            "ppo_epochs": 2,
-            "arch": "large",
             "standardize_returns": true,
             "ppo_batch_size": 50000,
-            "n_proc": 20,
+            "ppo_minibatch_size": 50000,
             "exp_buffer_size": 150000,
             "standardize_obs": false,
-            "min_inference_size": 80,
+            "ppo_epochs": 2,
             "timestep_limit": 250000000,
-            "ts_per_iteration": 50000,
-            "ppo_minibatch_size": 50000,
+            "min_inference_size": 80,
             "ppo_ent_coef": 0.01,
-            "save_every_ts": 5000000
+            "save_every_ts": 5000000,
+            "ts_per_iteration": 50000,
+            "n_proc": 20,
+            "arch": "large"
         },
         "logging": {
+            "wandb_group": "exp_003_long_run",
             "wandb_run": "stage3_basics",
             "sb3_metrics": false,
             "wandb": true,
             "wandb_project": "rlgym-finalproject",
-            "wandb_entity": "diego08-ie-university",
-            "wandb_group": "exp_003_long_run"
+            "wandb_entity": "diego08-ie-university"
         }
     }
 }
