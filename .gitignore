@@ -40,6 +40,14 @@ wandb/
 *.ckpt
 *.onnx
 
+# Tournament: recorded match videos are large — keep the folder, ignore the media.
+videos/*
+!videos/.gitkeep
+# Teammate checkpoints are fetched locally via the download script; track the
+# folder structure but never the weights (also covered by *.pt above).
+teammates/*/
+!teammates/.gitkeep
+
 # Rocket League / RLGym specific
 collision_meshes/
 rlbot.cfg.local

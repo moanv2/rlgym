@@ -1,0 +1,10 @@
+{
+  "_comment": "Sources for fetching each teammate's checkpoint. Fill in 'source' for the bots that aren't in the repo yet, then run: python -m rlbot.tournament.download. 'type' is one of: url (zip/tar archive over http[s]), git (repo URL, optionally '<url>#<subdir>'), local (path on this machine to copy). Entries with an empty 'source' are skipped. Bots already in the repo (diego/martin/marian) are listed for reference with empty sources.",
+  "bots": {
+    "diego":  {"type": "local", "source": "", "dest": "diego-bots/checkpoints/papaya_1024", "note": "already in repo"},
+    "martin": {"type": "local", "source": "", "dest": "martin-bots/checkpoints/CHAMPION_2.1B_recipeD_advanced1024", "note": "already in repo"},
+    "marian": {"type": "local", "source": "", "dest": "checkpoints/marian_iterations/1349081288", "note": "already in repo"},
+    "nachi":  {"type": "url", "source": "", "dest": "teammates/nachi", "note": "ask Nachi for a zip/drive link or git repo of his checkpoint folder (PPO_POLICY.pt + BOOK_KEEPING_VARS.json)"},
+    "marco":  {"type": "url", "source": "", "dest": "teammates/marco", "note": "ask Marco for a zip/drive link or git repo of his checkpoint folder (PPO_POLICY.pt + BOOK_KEEPING_VARS.json)"}
+  }
+}
