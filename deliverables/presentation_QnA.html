@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Q&amp;A prep | Champion Bot PPO 10B</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@600;700;800&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<style>
+:root{--gold:#F5C451;--blue:#3FA9FF;--bg:#060A14;--bg2:#0B1322;--panel:rgba(255,255,255,.045);
+  --line:rgba(255,255,255,.10);--ink:#F3F6FC;--muted:#9DAAC2}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:linear-gradient(180deg,var(--bg),var(--bg2));color:var(--ink);
+  font-family:'Inter',system-ui,sans-serif;line-height:1.5;padding:0 0 6rem}
+.wrap{max-width:880px;margin:0 auto;padding:0 5vw}
+header{padding:4.5rem 0 2rem;border-bottom:1px solid var(--line);margin-bottom:2.4rem}
+.kick{font-family:'JetBrains Mono',monospace;font-weight:700;letter-spacing:.3em;text-transform:uppercase;
+  font-size:.72rem;color:var(--gold);display:flex;gap:.7rem;align-items:center;margin-bottom:1rem}
+.kick::before{content:"";width:30px;height:2px;background:linear-gradient(90deg,var(--gold),var(--blue))}
+h1{font-family:'Sora';font-weight:800;font-size:clamp(2rem,5vw,3.2rem);line-height:1.05;letter-spacing:-.02em}
+h1 .g{background:linear-gradient(110deg,var(--gold),#FFE6A6 45%,var(--blue));-webkit-background-clip:text;background-clip:text;color:transparent}
+.lead{color:var(--muted);margin-top:1rem;max-width:60ch}
+h2{font-family:'Sora';font-weight:700;font-size:1.5rem;margin:2.8rem 0 1.2rem;padding-top:1.4rem;
+  border-top:1px solid var(--line);letter-spacing:-.01em}
+h2 .n{font-family:'JetBrains Mono';color:var(--blue);font-size:1rem;margin-right:.5rem}
+.qa{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:1.15rem 1.3rem;margin-bottom:.9rem}
+.q{font-family:'Sora';font-weight:600;font-size:1.04rem;color:var(--gold);display:flex;gap:.6rem}
+.q .mk{color:var(--blue);font-family:'JetBrains Mono';font-weight:700}
+.a{margin-top:.55rem;color:#dfe6f2}
+.a .hl{color:var(--ink);font-weight:600}
+.tip{margin-top:2.6rem;background:linear-gradient(90deg,rgba(245,196,81,.10),rgba(63,169,255,.10));
+  border:1px solid var(--line);border-radius:14px;padding:1.1rem 1.3rem;color:var(--muted);font-size:.95rem}
+.tip b{color:var(--gold)}
+footer{text-align:center;color:var(--muted);font-family:'JetBrains Mono';font-size:.72rem;margin-top:3rem}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <div class="kick">Presentation defense · 1v1 Rocket League PPO</div>
+  <h1>Q&amp;A prep for <span class="g">the 10B Champion deck</span></h1>
+  <p class="lead">Likely questions per slide, plus the PPO fundamentals and the curveballs, each with a short answer you can say out loud. Numbers match the deck. Keep answers calm and short, then offer detail if they want more.</p>
+</header>
+
+<h2><span class="n">01</span>Slide 1 · Title and overview</h2>
+<div class="qa"><div class="q"><span class="mk">Q</span>What is PPO, in one sentence?</div><div class="a">Proximal Policy Optimization is a reinforcement learning algorithm that improves a policy by playing games, measuring which actions did better than expected, and nudging the policy toward those actions in <span class="hl">small, clipped steps</span> so training stays stable.</div></div>
+<div class="qa"><div class="q"><span class="mk">Q</span>You say "trained from scratch" but also "kickstarted from another bot". Which is it?</div><div class="a">The network weights started completely random, with <span class="hl">no human gameplay data</span>, that is the from scratch and zero demos claim. For a short early phase it was guided by another self trained bot to skip the slow random fumbling, then that guidance was removed and it learned the rest on its own and surpassed that bot.</div></div>
+<div class="qa"><div class="q"><span class="mk">Q</span>What does "number one in both deploy modes" mean?</div><div class="a">At test time it can sample an action from its distribution (stochastic, more varied) or always take the most likely action (deterministic, more consistent). It finished first under both, so the strength is not an artifact of one setting.</div></div>
+<div class="qa"><div class="q"><span class="mk">Q</span>What exactly is a "step"?</div><div class="a">One decision plus one physics update in the simulator. Ten billion steps is the <span class="hl">total game experience</span> it learned from, the equivalent of many years of continuous play.</div></div>
+
+<h2><span class="n">02</span>Slide 2 · The brain, 107 in and 90 out</h2>
+<div class="qa"><div class="q"><span class="mk">Q</span>What are the 107 inputs?</div><div class="a">A compact description of the game state: the ball position and velocity, our car position, velocity, orientation and boost, the opponent car, the boost pad timers, and the previous action. Everything needed to choose the next move.</div></div>
+<div class="qa"><div class="q"><span class="mk">Q</span>Why 90 discrete actions instead of continuous control?</div><div class="a">We bucket the sensible combinations of the throttle, steer and button controls into 90 presets. That turns control into a <span class="hl">classification problem</span>, which is easier and more stable to train than continuous output, and it is what the strongest community bots use.</div></div>
+<div class="qa"><div class="q"><span class="mk">Q</span>What are the actor and the critic, and why both?</div><div class="a">The actor is the policy, it outputs a probability over the 90 actions. The critic estimates how good the current situation is. The critic's estimate is the baseline that tells the actor whether an action did <span class="hl">better or worse than expected</span>, which is what it reinforces. The baseline lowers the noise so learning is faster.</div></div>
+<div class="qa"><div class="q"><span class="mk">Q</span>Why three layers of 1024? How did you pick the size?</div><div class="a">It comfortably fits the task and matches the strong community bots and our teacher, so distillation lines up cleanly. Bigger was not worth the extra compute per step, smaller started to cap the skill.</div></div>
+<div class="qa"><div class="q"><span class="mk">Q</span>Why act only about 15 times a second, not every frame?</div><div class="a">Physics runs at 120 ticks per second but the bot repeats each decision for 8 ticks, so it acts about 15 times a second. This is standard, it matches human reaction timing and makes each decision cover a meaningful moment rather than a tiny fraction of one.</div></div>
+
+<h2><span class="n">03</span>Slide 3 · Reward</h2>
+<div class="qa"><div class="q"><span class="mk">Q</span>How did you design the reward?</div><div class="a">Outcomes dominate, a goal is plus ten and conceding is minus ten. Everything else, touching the ball, driving it goalward, chasing, defending, aerials, is <span class="hl">small shaping</span> that teaches good habits early without overriding the real objective of winning.</div></div>
+<div class="qa"><div class="q"><span class="mk">Q</span>Isn't shaped reward risky? Could it farm the shaping instead of scoring?</div><div class="a">Yes, that is reward hacking, and it is exactly why the shaping rewards are kept small next to the goal reward and matter less as it improves. The <span class="hl">outcome term always dominates</span>, so winning stays the real objective.</div></div>
+<div class="qa"><div class="q"><span class="mk">Q</span>What does "zero sum" mean here?</div><div class="a">Whatever reward one car gets, the other loses the same amount. It stays a true competition, the bot cannot be rewarded unless it is genuinely outplaying its opponent.</div></div>
+<div class="qa"><div class="q"><span class="mk">Q</span>How did you choose the weights?</div><div class="a">By A/B testing. We changed one reward at a time, trained a challenger against the current champion, and kept the change only if it actually won more games. The final stack is what survived that test.</div></div>
+
+<h2><span class="n">04</span>Slide 4 · Scale and the CPU</h2>
+<div class="qa"><div class="q"><span class="mk">Q</span>Why is this CPU bound and not GPU?</div><div class="a">The bottleneck is running the game simulations to generate experience, which is CPU work. The network is small, so the GPU sits near 8 percent. <span class="hl">More CPU cores means more games in parallel means more experience per second.</span></div></div>
+<div class="qa"><div class="q"><span class="mk">Q</span>Why does training more help so much?</div><div class="a">In reinforcement learning the bot only learns from experience it generates. More steps means more situations seen and refined, and with self play the opponent keeps improving too, so the skill ceiling keeps rising. Ten billion steps is three to seven times any other bot here.</div></div>
+<div class="qa"><div class="q"><span class="mk">Q</span>Did it plateau? Was ten billion overkill?</div><div class="a">It was still improving, slowly, when we froze it. We stopped at ten billion because it was comfortably the strongest and we needed to package it, not because it stopped learning.</div></div>
+<div class="qa"><div class="q"><span class="mk">Q</span>Could the cloud or a GPU cluster have been faster?</div><div class="a">More parallel CPU workers would speed up experience collection, yes. The point of the slide is that a <span class="hl">single strong desktop</span> was enough to outscale the whole group, which was our decisive and accessible edge.</div></div>
+
+<h2><span class="n">05</span>Slide 5 · Results</h2>
+<div class="qa"><div class="q"><span class="mk">Q</span>How is the win rate measured?</div><div class="a">A round robin, 3000 games per mode between all five bots. The percentage is the share of decisive games each won. Ours won 82.3 percent deterministic and 73.0 percent sampling, <span class="hl">first in both</span>.</div></div>
+<div class="qa"><div class="q"><span class="mk">Q</span>Why is the deterministic number higher than the sampling one?</div><div class="a">Deterministic always plays the single best move, which is the most reliable. Sampling adds randomness for variety, slightly weaker on average but still first.</div></div>
+<div class="qa"><div class="q"><span class="mk">Q</span>Is the comparison fair? Do the bots use the same inputs?</div><div class="a">The tournament uses a shared interface so bots with different observation or action formats still play head to head. The skill gap is real, not an artifact of mismatched inputs.</div></div>
+<div class="qa"><div class="q"><span class="mk">Q</span>Why is Marian so low, at 8 percent?</div><div class="a">It is a smaller, earlier bot, around 1.35 billion steps with a smaller network. The spread shows how strongly training scale and architecture matter.</div></div>
+
+<h2><span class="n">06</span>Slide 6 · What it did differently</h2>
+<div class="qa"><div class="q"><span class="mk">Q</span>How does "kickstart then surpass" work technically?</div><div class="a">Early on the student is also rewarded for matching the teacher's action choices, which skips the slow random phase. That matching reward is then <span class="hl">annealed to zero</span>, so pure self play takes over and the student keeps improving past the teacher instead of being capped by it.</div></div>
+<div class="qa"><div class="q"><span class="mk">Q</span>Why not just copy the teacher and stop?</div><div class="a">Copying caps you at the teacher's level. By fading the teacher out and continuing with reinforcement learning, the student explored beyond it and ended up clearly stronger.</div></div>
+<div class="qa"><div class="q"><span class="mk">Q</span>Give an example of an A/B test you ran.</div><div class="a">We tested ideas like rewarding possession, ball acceleration toward goal, lower entropy, and a stronger concede penalty. Each ran as a parallel challenger against the champion, and most did not beat it, so they were dropped. That discipline is why the final recipe is trustworthy.</div></div>
+<div class="qa"><div class="q"><span class="mk">Q</span>How would training against other AI or real players work?</div><div class="a">We would add stronger external opponents into the self play pool so it keeps facing harder challenges. Against humans we would only do local exhibition matches, not online ranked play, to stay within the game's terms.</div></div>
+
+<h2><span class="n">07</span>PPO fundamentals (the make or break)</h2>
+<div class="qa"><div class="q"><span class="mk">Q</span>Walk me through the PPO learning loop.</div><div class="a">Collect experience by self play, estimate how much better each action was than the critic expected (using GAE), then update the policy and critic for a couple of epochs with a <span class="hl">clipped objective</span> that stops any single update from being too large, and repeat. An entropy bonus keeps it exploring.</div></div>
+<div class="qa"><div class="q"><span class="mk">Q</span>Why is the state Markovian?</div><div class="a">Because the observation contains everything physically needed to act optimally: positions, velocities, orientations, boost, pad timers, previous action. Given the current state and action, the next state is determined by the physics, <span class="hl">independent of the past</span>, which is the Markov property.</div></div>
+<div class="qa"><div class="q"><span class="mk">Q</span>What is the "clip" in PPO, and why 0.2?</div><div class="a">PPO limits how far the new policy can move from the old one by clipping the probability ratio to within 0.2 each update. That keeps updates small and stable so training does not collapse. Our clip fraction stayed near 1 percent, confirming gentle updates.</div></div>
+<div class="qa"><div class="q"><span class="mk">Q</span>What do clip fraction, KL divergence and entropy tell you?</div><div class="a">Clip fraction 0.0101 and mean KL 0.0013 mean updates were small and stable, the policy was not lurching. Entropy 4.02 out of a max near 4.5 means it kept <span class="hl">healthy exploration</span> rather than collapsing early. Together they say training was stable and well tuned.</div></div>
+<div class="qa"><div class="q"><span class="mk">Q</span>What is the advantage and the value function?</div><div class="a">The value function predicts expected future reward from a state. The advantage is how much better an action turned out than that prediction. Training pushes up actions with positive advantage and down those with negative, and the value baseline lowers the noise.</div></div>
+<div class="qa"><div class="q"><span class="mk">Q</span>Why these hyperparameters: learning rate 1e-4, gamma 0.99, 2 epochs?</div><div class="a">For stable, high throughput training. A modest learning rate and 2 epochs avoid overfitting each batch and keep steps per second high given the huge volume of fresh experience, and gamma 0.99 sets a long enough planning horizon for the reward shaping we used.</div></div>
+<div class="qa"><div class="q"><span class="mk">Q</span>Is PPO on policy or off policy?</div><div class="a">On policy, it learns from experience generated by the current policy. That is why throughput matters so much, fresh experience must be collected continuously, which is what the parallel CPU workers provide.</div></div>
+
+<h2><span class="n">08</span>Curveballs</h2>
+<div class="qa"><div class="q"><span class="mk">Q</span>How do you know it is not just memorizing?</div><div class="a">It is evaluated on fresh games it never trained on, with randomized kickoffs, against opponents it was not trained against. Generalizing to those is the opposite of memorizing.</div></div>
+<div class="qa"><div class="q"><span class="mk">Q</span>What are the bot's weaknesses?</div><div class="a">Like most self play bots it is less polished in rare situations it saw little of, and its style reflects the reward shaping. It is strongest at the core 1v1 game it trained on. (Full list in how_the_bot_works.md.)</div></div>
+<div class="qa"><div class="q"><span class="mk">Q</span>Did you use any human data?</div><div class="a"><span class="hl">None. Zero human demonstrations.</span> It learned entirely from self play, guided only briefly by another self trained bot.</div></div>
+<div class="qa"><div class="q"><span class="mk">Q</span>What is the single most important reason it won?</div><div class="a">Scale of training, made possible by the CPU running 22 simulations at once. It learned from far more experience than anyone else, on top of a clean reward and a disciplined A/B method.</div></div>
+<div class="qa"><div class="q"><span class="mk">Q</span>How does this connect to the imitation learning half of the project?</div><div class="a">That is the other half. We also built behavioral cloning and DAgger, where a student learns by imitating this champion as the expert. The champion is the reinforcement learning result, the imitation learning shows how to copy an expert from demonstrations.</div></div>
+
+<div class="tip"><b>Delivery tip:</b> if you do not know a number, give the honest range and pivot to the method ("I would have to check the exact value, but the point is..."). Confidence in the <i>how</i> matters more than reciting every figure. The deck numbers and the wandb signals (clip fraction, KL, entropy) are your anchors.</div>
+
+<footer>Q&amp;A prep · The Champion Bot · PPO 10B · open the deck (martin_champion_deck.html) alongside this</footer>
+</div>
+</body>
+</html>
