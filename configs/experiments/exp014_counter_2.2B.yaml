@@ -1,0 +1,96 @@
+# exp014 — the 2.2B COUNTER-TRAINED bot (the strongest bot we have).
+#
+# LINEAGE (this is exp_007_large's 2.0B brain, evolved — NOT a from-scratch run):
+#   2.0B  exp_007_large (DefaultObs 89, self-play)         <- the foundation
+#   +65M  obs-expansion: transplanted the 2B weights into a 107-input net
+#         (DefaultPlusObs = DefaultObs's exact 89 features + 18 ego-relative extras,
+#          so the first 89 weights read identical features and transplant cleanly)
+#   +30M  plain counter-training vs the FROZEN rivals (Diego/Nachi/Martin rotation)
+#   +105M low-LR (3e-5) counter-training — the breakthrough
+#   = ~2.2B total steps of training in this checkpoint.
+#
+# RESULT (true 1v1 head-to-head, deterministic, 100-200 eps):
+#   Diego ~81% (2B was 50%) · Nachi ~61% (was 30%) · Martin ~45% (was 18%).
+#   Est. tournament avg ~67% (2B was ~44%) — 2nd place, contesting 1st.
+#
+# HOW IT WAS MADE: not via this YAML / train.py — via the single-agent counter-training
+# harness `_counter_train_field.py` (blue=ours, orange=a frozen rival that rotates each
+# reset). This config exists to DOCUMENT the bot and to LOAD it for tournaments/eval:
+# the obs (default_plus / 107-dim), action (lookup / 90), and arch (large / 1024x3)
+# below are what a loader needs to instantiate the policy correctly.
+#
+# CHECKPOINT: checkpoints/exp014_lowlr_from95M/200006334/
+# Backup:     C:/rlbot/checkpoints/exp014_FINAL_200M_D78_N70_M43
+
+extends: ../default.yaml
+
+experiment_name: exp014_counter_2.2B
+seed: 11
+
+# --- Observations / actions: 107-dim DefaultPlusObs (89 default + 18 relative), LookupAction ---
+# NOTE: this obs MUST match how the bot was trained. The custom builder lives at
+# src/rlbot/obs/default_plus_obs.py and is registered as "default_plus" in obs/builder.py.
+obs:
+  name: default_plus
+action:
+  name: lookup
+
+# --- Rewards: the plain aggressive scoring stack used for counter-training (no defensive
+#     shaping — that turtled). zero_sum vs the frozen rival. ---
+rewards:
+  zero_sum: true
+  team_spirit: 0.0
+  opp_scale: 1.0
+  components:
+    - name: touch_ball
+      weight: 1.0
+    - name: velocity_player_to_ball
+      weight: 0.3
+    - name: face_ball
+      weight: 0.1
+    - name: velocity_ball_to_goal
+      weight: 0.8
+    - name: event
+      weight: 15.0
+      kwargs:
+        goal:    1.0
+        concede: -1.0
+        shot:    0.2
+        save:    0.3
+        demo:    0.1
+
+state_setter:
+  name: weighted_sample
+  components:
+    - name: default
+      weight: 0.5
+    - name: random
+      weight: 0.5
+      ball_rand_speed: true
+      cars_rand_speed: true
+      cars_on_ground: false
+
+learner:
+  arch: large                  # 1024x3 — same capacity as the 2B foundation
+  n_proc: 20
+  ts_per_iteration: 100_000
+  ppo_batch_size: 100_000
+  ppo_minibatch_size: 50_000
+  exp_buffer_size: 300_000
+  ppo_epochs: 3
+  policy_lr: 3.0e-5            # the low-LR that broke the plateau (was 1e-4)
+  critic_lr: 3.0e-5
+  ppo_ent_coef: 0.01
+  ppo_clip_range: 0.2
+  gae_lambda: 0.95
+  standardize_returns: true
+  standardize_obs: false
+  save_every_ts: 5_000_000
+  n_checkpoints_to_keep: 200
+  timestep_limit: 400_000_000
+
+self_play:
+  enabled: false               # counter-training uses the _counter_train_field.py harness, not self-play
+
+logging:
+  wandb_group: exp014_counter_2.2B

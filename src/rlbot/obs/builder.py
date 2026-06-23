@@ -14,14 +14,20 @@ def build_obs(config: dict[str, Any]):
         return DefaultObs()
 
     if name == "advanced":
-        # rlgym_tools.advanced_obs is a more feature-rich obs (relative positions, etc.)
-        try:
-            from rlgym_tools.extra_obs.advanced_obs import AdvancedObs
+        # Custom rlgym_sim-compatible AdvancedObs (relative pos/vel to ball &
+        # opponent). We ship our own because rlgym_tools 2.6.4 has no AdvancedObs
+        # for the rlgym_sim API — its RelativeDefaultObs is RLGym 2.0 API and is
+        # not a rlgym_sim ObsBuilder subclass, so it crashes in rlgym_sim.make().
+        from rlbot.obs.advanced_obs import AdvancedObs
 
-            return AdvancedObs()
-        except ImportError as e:
-            raise ImportError(
-                "obs.name='advanced' requires rlgym-tools. pip install -r requirements.txt"
-            ) from e
+        return AdvancedObs()
+
+    if name == "default_plus":
+        # 107-dim: DefaultObs's exact 89 features + 18 ego-relative extras. The
+        # obs the 2.2B counter-trained bot (exp014) was built on — its first 89
+        # outputs are byte-for-byte DefaultObs, so the 2B weights transplant cleanly.
+        from rlbot.obs.default_plus_obs import DefaultPlusObs
+
+        return DefaultPlusObs()
 
     raise ValueError(f"Unknown obs builder: {name!r}")
