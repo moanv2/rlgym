@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The Champion Bot | PPO 10B</title>
+
+
+<link href="vendor/fonts/fonts.css" rel="stylesheet">
+<style>
+:root{
+  --gold:#F5C451; --gold-deep:#C9972B; --blue:#3FA9FF; --blue-deep:#1E6FC4;
+  --bg:#060A14; --bg2:#0B1322;
+  --panel:rgba(255,255,255,.05); --line:rgba(255,255,255,.11);
+  --ink:#F3F6FC; --muted:#9DAAC2;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{height:100%;overflow:hidden}
+body{background:var(--bg);color:var(--ink);font-family:'Inter',sans-serif}
+.deck{position:fixed;inset:0}
+.slide{
+  position:absolute;inset:0;display:none;flex-direction:column;justify-content:center;
+  padding:6vh 7vw 9vh;
+  background:
+    radial-gradient(120% 85% at 84% 6%, rgba(63,169,255,.14), transparent 58%),
+    radial-gradient(115% 80% at 10% 98%, rgba(245,196,81,.13), transparent 55%),
+    linear-gradient(180deg,var(--bg),var(--bg2));
+}
+.slide.active{display:flex;animation:rise .55s cubic-bezier(.2,.7,.2,1)}
+@keyframes rise{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:none}}
+.slide::before{content:"";position:absolute;inset:0;pointer-events:none;
+  background-image:linear-gradient(rgba(255,255,255,.022) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.022) 1px,transparent 1px);
+  background-size:58px 58px;mask:radial-gradient(125% 125% at 50% 35%,#000 28%,transparent 80%)}
+.slide>*{position:relative;z-index:1}
+.kicker{font-family:'JetBrains Mono',monospace;font-weight:700;letter-spacing:.34em;text-transform:uppercase;
+  font-size:.72rem;color:var(--gold);margin-bottom:1rem;display:flex;gap:.7rem;align-items:center}
+.kicker::before{content:"";width:32px;height:2px;background:linear-gradient(90deg,var(--gold),var(--blue))}
+h1{font-family:'Sora';font-weight:800;line-height:1.0;letter-spacing:-.02em}
+h2{font-family:'Sora';font-weight:700;font-size:clamp(1.8rem,3.6vw,3rem);line-height:1.06;letter-spacing:-.02em}
+.sub{color:var(--muted);font-size:clamp(1rem,1.45vw,1.25rem);max-width:62ch;line-height:1.5}
+.grad{background:linear-gradient(110deg,var(--gold) 12%,#FFE6A6 42%,var(--blue) 116%);-webkit-background-clip:text;background-clip:text;color:transparent}
+.gradb{background:linear-gradient(110deg,var(--blue) 0%,#BFE3FF 55%,var(--gold) 120%);-webkit-background-clip:text;background-clip:text;color:transparent}
+
+/* title */
+.title-wrap{display:flex;flex-direction:column;gap:1.5rem;align-items:flex-start}
+.title-wrap h1{font-size:clamp(3rem,8vw,6.8rem)}
+.badge{display:inline-flex;align-items:center;gap:.6rem;padding:.5rem 1.05rem;border-radius:999px;border:1px solid var(--line);
+  background:var(--panel);font-family:'JetBrains Mono';font-weight:700;font-size:.8rem}
+.badge .dot{width:9px;height:9px;border-radius:50%;background:var(--gold);box-shadow:0 0 14px var(--gold)}
+.tmeta{display:flex;gap:2.6rem;flex-wrap:wrap;margin-top:.6rem}
+.tmeta .m b{font-family:'Sora';font-size:clamp(1.7rem,3.2vw,2.6rem);font-weight:800;display:block;line-height:1}
+.tmeta .m:nth-child(odd) b{color:var(--gold)} .tmeta .m:nth-child(even) b{color:var(--blue)}
+.tmeta .m span{color:var(--muted);font-size:.8rem;letter-spacing:.03em;margin-top:.35rem;display:block}
+
+/* generic */
+.head{display:flex;justify-content:space-between;align-items:flex-end;gap:2rem;margin-bottom:.4rem}
+.row{display:flex;gap:2.4rem;align-items:center}
+.center{align-items:center;text-align:center}
+
+/* building block captions */
+.blocks{display:grid;grid-template-columns:repeat(3,1fr);gap:1rem;margin-top:1.6rem}
+.bk{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:1.1rem 1.2rem}
+.bk b{font-family:'Sora';font-weight:600;font-size:1rem;display:block}
+.bk span{color:var(--muted);font-size:.86rem}
+.bk i{font-style:normal;font-family:'JetBrains Mono';color:var(--blue);font-size:.78rem}
+
+/* network */
+#net{width:100%;height:46vh;max-height:460px;display:block}
+
+/* reward rows */
+.rwrap{margin-top:1.7rem;display:flex;flex-direction:column;gap:1.05rem;max-width:1050px}
+.rw{display:grid;grid-template-columns:300px 1fr;align-items:center;gap:1.6rem}
+.rw .l{display:flex;align-items:center;gap:.7rem;font-size:1.05rem}
+.rw .l .ic{font-size:1.35rem;width:1.7rem;text-align:center}
+.rw .track{height:16px;border-radius:9px;background:rgba(255,255,255,.06);position:relative;overflow:hidden}
+.rw .fill{position:absolute;inset:0 auto 0 0;border-radius:9px}
+.rw .fill.g{background:linear-gradient(90deg,var(--gold-deep),var(--gold))}
+.rw .fill.b{background:linear-gradient(90deg,var(--blue-deep),var(--blue))}
+.rw .tag{position:absolute;right:.7rem;top:50%;transform:translateY(-50%);font-family:'JetBrains Mono';font-size:.72rem;color:#0a1020;font-weight:700}
+.note{color:var(--muted);font-size:.95rem;margin-top:1.4rem}
+.note b{color:var(--gold)}
+
+/* scale slide */
+.scale{display:grid;grid-template-columns:300px 1fr;gap:2.4rem;align-items:center;margin-top:1.4rem}
+.cpu-col{display:flex;flex-direction:column;align-items:center;gap:.7rem}
+.cpu-cap{font-family:'JetBrains Mono';font-size:.74rem;color:var(--muted);text-align:center;letter-spacing:.04em}
+.cpu-cap b{color:var(--gold)}
+.arrowdown{color:var(--blue);font-size:1.4rem;line-height:1}
+.simbox{border:1px solid var(--line);background:var(--panel);border-radius:16px;padding:1rem;width:100%}
+.simgrid{display:grid;grid-template-columns:repeat(11,1fr);gap:7px}
+.cell{aspect-ratio:1;border-radius:6px;background:linear-gradient(135deg,rgba(63,169,255,.22),rgba(245,196,81,.16));
+  border:1px solid rgba(255,255,255,.12);display:flex;align-items:center;justify-content:center;font-size:.7rem}
+.simlabel{text-align:center;font-family:'JetBrains Mono';font-size:.72rem;color:var(--muted);margin-top:.6rem;letter-spacing:.05em}
+.simlabel b{color:var(--blue)}
+.stats{display:grid;grid-template-columns:1fr 1fr;gap:1rem}
+.stat{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:1.2rem 1.3rem}
+.stat b{font-family:'Sora';font-weight:800;font-size:clamp(1.9rem,3.4vw,2.7rem);line-height:1;display:block}
+.stat:nth-child(1) b,.stat:nth-child(4) b{background:linear-gradient(120deg,var(--gold),#FFE7A0);-webkit-background-clip:text;background-clip:text;color:transparent}
+.stat:nth-child(2) b,.stat:nth-child(3) b{background:linear-gradient(120deg,var(--blue),#BFE3FF);-webkit-background-clip:text;background-clip:text;color:transparent}
+.stat span{color:var(--muted);font-size:.82rem;margin-top:.5rem;display:block}
+
+/* results */
+.bars{display:flex;flex-direction:column;gap:1rem;margin-top:1.5rem;max-width:1080px}
+.bar{display:grid;grid-template-columns:200px 1fr;align-items:center;gap:1.3rem}
+.bar .who{display:flex;align-items:center;gap:.55rem;font-size:1.02rem}
+.bar .barwrap{height:34px;border-radius:9px;background:rgba(255,255,255,.05);position:relative;overflow:hidden}
+.bar .barfill{position:absolute;inset:0 auto 0 0;border-radius:9px;display:flex;align-items:center;justify-content:flex-end;
+  padding-right:.7rem;font-family:'JetBrains Mono';font-weight:700;font-size:.84rem}
+.bar.me .barfill{background:linear-gradient(90deg,var(--gold-deep),var(--gold));color:#0a1020}
+.bar .barfill.alt{background:linear-gradient(90deg,var(--blue-deep),#5a93cf);color:#eaf3fc}
+.legend{margin-top:1.3rem;color:var(--muted);font-size:.92rem}
+.legend b{color:var(--gold)}
+
+/* edge slide */
+.edge{display:grid;grid-template-columns:repeat(3,1fr);gap:1.1rem;margin-top:1.7rem}
+.ecard{background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:1.4rem 1.4rem}
+.ecard .n{font-family:'JetBrains Mono';font-size:.74rem;letter-spacing:.1em}
+.ecard:nth-child(1) .n{color:var(--gold)} .ecard:nth-child(2) .n{color:var(--blue)} .ecard:nth-child(3) .n{color:var(--gold)}
+.ecard b{font-family:'Sora';font-weight:700;font-size:1.18rem;display:block;margin:.5rem 0 .4rem}
+.ecard p{color:var(--muted);font-size:.92rem;line-height:1.45}
+.next{margin-top:1.9rem;display:flex;align-items:center;gap:1rem;flex-wrap:wrap}
+.nextpill{display:inline-flex;align-items:center;gap:.6rem;padding:.7rem 1.2rem;border-radius:999px;
+  border:1px solid var(--line);background:linear-gradient(90deg,rgba(245,196,81,.12),rgba(63,169,255,.12));
+  font-family:'Sora';font-weight:600;font-size:1.02rem}
+
+/* chrome */
+.progress{position:fixed;top:0;left:0;height:3px;background:linear-gradient(90deg,var(--gold),var(--blue));z-index:50;transition:width .4s}
+.foot{position:fixed;bottom:2.3vh;left:7vw;right:7vw;display:flex;justify-content:space-between;z-index:40;
+  font-family:'JetBrains Mono';font-size:.7rem;color:var(--muted)}
+.foot .nm{color:var(--ink)}
+.dots{position:fixed;bottom:2.1vh;left:50%;transform:translateX(-50%);display:flex;gap:.5rem;z-index:40}
+.dots i{width:8px;height:8px;border-radius:50%;background:rgba(255,255,255,.2);cursor:pointer;transition:.25s}
+.dots i.on{width:22px;border-radius:4px;background:linear-gradient(90deg,var(--gold),var(--blue))}
+@media(max-width:900px){.blocks,.scale,.edge,.stats{grid-template-columns:1fr}.bar{grid-template-columns:130px 1fr}.rw{grid-template-columns:160px 1fr}}
+</style>
+</head>
+<body>
+<div class="progress" id="prog"></div>
+<div class="deck" id="deck">
+
+  <!-- 1 TITLE -->
+  <section class="slide active">
+    <div class="title-wrap">
+      <span class="badge"><span class="dot"></span>TRAINED TO 10 BILLION STEPS</span>
+      <div class="kicker">Reinforcement Learning · 1v1 Rocket League</div>
+      <h1>The <span class="grad">Champion</span><br>that taught itself</h1>
+      <p class="sub">A neural network trained from scratch with PPO. It played itself ten billion times and became the strongest bot in the team tournament.</p>
+      <div class="tmeta">
+        <div class="m"><b>10B</b><span>training steps</span></div>
+        <div class="m"><b>#1</b><span>both deploy modes</span></div>
+        <div class="m"><b>82%</b><span>game win rate</span></div>
+        <div class="m"><b>0</b><span>human demos used</span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 2 THE BRAIN / NETWORK -->
+  <section class="slide">
+    <div class="head">
+      <div>
+        <div class="kicker">The brain</div>
+        <h2>107 numbers in. <span class="gradb">One of 90 moves</span> out.</h2>
+      </div>
+    </div>
+    <svg id="net" viewBox="0 0 1000 460" preserveAspectRatio="xMidYMid meet" aria-label="neural network"></svg>
+    <div class="blocks">
+      <div class="bk"><b>Sees the game</b><span><i>107</i> numbers. Its car, the ball, the opponent.</span></div>
+      <div class="bk"><b>Three hidden layers</b><span><i>1024 x 1024 x 1024</i>. Actor picks, critic judges.</span></div>
+      <div class="bk"><b>Picks a move</b><span><i>1 of 90</i> controller presets, about 15 times a second.</span></div>
+    </div>
+  </section>
+
+  <!-- 3 REWARD -->
+  <section class="slide">
+    <div class="kicker">What it is rewarded for</div>
+    <h2>It learns from <span class="grad">one simple rule</span>: do more of what wins</h2>
+    <div class="rwrap">
+      <div class="rw"><div class="l"><span class="ic">🥅</span> Score, and never concede</div><div class="track"><div class="fill g" style="width:100%"><span class="tag">+10 / -10</span></div></div></div>
+      <div class="rw"><div class="l"><span class="ic">⚽</span> Touch the ball</div><div class="track"><div class="fill g" style="width:50%"></div></div></div>
+      <div class="rw"><div class="l"><span class="ic">🎯</span> Drive the ball at the goal</div><div class="track"><div class="fill g" style="width:32%"></div></div></div>
+      <div class="rw"><div class="l"><span class="ic">🏎️</span> Chase the ball</div><div class="track"><div class="fill b" style="width:22%"></div></div></div>
+      <div class="rw"><div class="l"><span class="ic">🛡️</span> Defend its own net</div><div class="track"><div class="fill b" style="width:18%"></div></div></div>
+      <div class="rw"><div class="l"><span class="ic">🛩️</span> Hit it in the air</div><div class="track"><div class="fill b" style="width:14%"></div></div></div>
+    </div>
+    <p class="note">Outcomes matter most. Everything else is gentle shaping that teaches the habits. <b>Zero sum</b>, so one car's gain is the other's loss.</p>
+  </section>
+
+  <!-- 4 SCALE + CPU -->
+  <section class="slide">
+    <div class="kicker">The decisive edge</div>
+    <h2>Ten billion steps on <span class="gradb">one desktop</span></h2>
+    <div class="scale">
+      <div class="cpu-col">
+        <!-- Ryzen CPU illustration -->
+        <svg width="230" height="230" viewBox="0 0 230 230" aria-label="Ryzen CPU">
+          <defs>
+            <linearGradient id="ihs" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0" stop-color="#39435a"/>
+              <stop offset=".45" stop-color="#5b6b8c"/><stop offset=".55" stop-color="#6f80a3"/>
+              <stop offset="1" stop-color="#2c3447"/>
+            </linearGradient>
+            <linearGradient id="goldedge" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0" stop-color="#F5C451"/><stop offset="1" stop-color="#C9972B"/>
+            </linearGradient>
+            <radialGradient id="glow" cx="50%" cy="50%" r="60%">
+              <stop offset="0" stop-color="rgba(63,169,255,.5)"/><stop offset="1" stop-color="rgba(63,169,255,0)"/>
+            </radialGradient>
+          </defs>
+          <rect x="15" y="15" width="200" height="200" rx="16" fill="url(#glow)"/>
+          <rect x="34" y="34" width="162" height="162" rx="12" fill="#0d1422" stroke="url(#goldedge)" stroke-width="2"/>
+          <!-- contact pin hint -->
+          <g fill="#C9972B" opacity="0.55">
+            <circle cx="50" cy="186" r="2"/><circle cx="62" cy="186" r="2"/><circle cx="74" cy="186" r="2"/><circle cx="86" cy="186" r="2"/>
+            <circle cx="98" cy="186" r="2"/><circle cx="110" cy="186" r="2"/><circle cx="122" cy="186" r="2"/><circle cx="134" cy="186" r="2"/>
+            <circle cx="146" cy="186" r="2"/><circle cx="158" cy="186" r="2"/><circle cx="170" cy="186" r="2"/><circle cx="180" cy="186" r="2"/>
+          </g>
+          <!-- heat spreader -->
+          <path d="M58 52 h114 a6 6 0 0 1 6 6 v100 a6 6 0 0 1 -6 6 h-114 a6 6 0 0 1 -6 -6 v-100 a6 6 0 0 1 6 -6 z" fill="url(#ihs)" stroke="#8595b5" stroke-width="1"/>
+          <path d="M58 52 h114 a6 6 0 0 1 6 6 v100 a6 6 0 0 1 -6 6 h-114 a6 6 0 0 1 -6 -6 v-100 a6 6 0 0 1 6 -6 z" fill="none" stroke="#222c3e" stroke-width="3" opacity=".4" transform="scale(0.985) translate(2,2)"/>
+          <!-- orientation triangle -->
+          <path d="M64 158 l10 0 l0 -10 z" fill="url(#goldedge)"/>
+          <text x="115" y="100" text-anchor="middle" font-family="JetBrains Mono, monospace" font-weight="700" font-size="15" fill="#cdd8ee" letter-spacing="1">RYZEN 9</text>
+          <text x="115" y="122" text-anchor="middle" font-family="JetBrains Mono, monospace" font-weight="700" font-size="15" fill="#F5C451" letter-spacing="1">3900X</text>
+        </svg>
+        <div class="cpu-cap"><b>AMD Ryzen 9 3900X</b><br>12 cores · 24 threads · 3.8 GHz</div>
+      </div>
+      <div>
+        <div class="arrowdown" style="text-align:center;margin-bottom:.5rem">22 parallel workers ↓</div>
+        <div class="simbox">
+          <div class="simgrid" id="simgrid"></div>
+          <div class="simlabel"><b>22 game simulations</b> running at once, all on the CPU</div>
+        </div>
+        <div class="stats" style="margin-top:1.1rem">
+          <div class="stat"><b>10B</b><span>total steps, 3 to 7x any other bot</span></div>
+          <div class="stat"><b>~9,000</b><span>steps per second</span></div>
+          <div class="stat"><b>22</b><span>parallel simulations</span></div>
+          <div class="stat"><b>~8%</b><span>GPU use. This is CPU bound</span></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 5 RESULTS -->
+  <section class="slide">
+    <div class="kicker">Team tournament · 3000 games per mode</div>
+    <h2>Number one, in <span class="grad">both modes</span></h2>
+    <div class="bars">
+      <div class="bar me"><span class="who">🥇 Martin 10B</span><div class="barwrap"><div class="barfill" style="width:82.3%">82.3%</div></div></div>
+      <div class="bar"><span class="who">🥈 Nachi 2.9B</span><div class="barwrap"><div class="barfill alt" style="width:69.2%">69.2%</div></div></div>
+      <div class="bar"><span class="who">🥉 Marco 2.0B</span><div class="barwrap"><div class="barfill alt" style="width:45.1%">45.1%</div></div></div>
+      <div class="bar"><span class="who">Diego papaya</span><div class="barwrap"><div class="barfill alt" style="width:44.8%">44.8%</div></div></div>
+      <div class="bar"><span class="who">Marian 1.35B</span><div class="barwrap"><div class="barfill alt" style="width:8.2%">8.2%</div></div></div>
+    </div>
+    <p class="legend">Game win rate, deterministic play. First in the sampling mode too at <b>73.0%</b>. Strongest bot by a wide margin.</p>
+  </section>
+
+  <!-- 6 EDGE + NEXT -->
+  <section class="slide">
+    <div class="kicker">Why it won, and where it goes</div>
+    <h2>What Martin's bot did <span class="gradb">differently</span></h2>
+    <div class="edge">
+      <div class="ecard"><div class="n">01 · SCALE</div><b>Trained the most, by far</b><p>10 billion steps, 3 to 7x any other bot, made reachable by the 22 parallel sims on the Ryzen.</p></div>
+      <div class="ecard"><div class="n">02 · HEAD START</div><b>Kickstarted, then surpassed</b><p>Shadowed Diego's papaya bot for the first 150 million steps, then faded it out and beat the teacher.</p></div>
+      <div class="ecard"><div class="n">03 · METHOD</div><b>A/B tested everything</b><p>Changed one variable at a time, trained a challenger in parallel, and kept it only if it beat the champion.</p></div>
+    </div>
+    <div class="next">
+      <span class="nextpill">⏭️ Next: test it against other game AI and real players</span>
+      <span class="sub" style="max-width:34ch">From zero to champion in ten billion steps.</span>
+    </div>
+  </section>
+
+</div>
+
+<div class="dots" id="dots"></div>
+<div class="foot"><span class="nm">The Champion Bot · PPO 10B</span><span id="fc">01 / 06</span></div>
+
+<script>
+// ---- neural network diagram ----
+(function(){
+  const svg=document.getElementById('net');
+  const W=1000,H=460,NS='http://www.w3.org/2000/svg';
+  svg.innerHTML=`<defs>
+    <linearGradient id="edge" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#3FA9FF"/><stop offset="1" stop-color="#F5C451"/></linearGradient>
+    <radialGradient id="ng" cx="40%" cy="35%" r="70%"><stop offset="0" stop-color="#FFE6A6"/><stop offset="1" stop-color="#C9972B"/></radialGradient>
+    <radialGradient id="nb" cx="40%" cy="35%" r="70%"><stop offset="0" stop-color="#BFE3FF"/><stop offset="1" stop-color="#1E6FC4"/></radialGradient>
+  </defs>`;
+  const layers=[{show:9,label:'107',sub:'state in',c:'b'},{show:13,label:'1024',c:'g'},{show:13,label:'1024',c:'g'},{show:13,label:'1024',c:'g'},{show:9,label:'90',sub:'actions out',c:'b'}];
+  const xs=[95,310,505,700,910], cy=H/2-12;
+  const pos=layers.map((L,i)=>{const gap=Math.min(30,(H-150)/(L.show-1));const ys=[];for(let k=0;k<L.show;k++)ys.push(cy+(k-(L.show-1)/2)*gap);return ys.map(y=>({x:xs[i],y}));});
+  let s='';
+  for(let i=0;i<pos.length-1;i++)for(const a of pos[i])for(const b of pos[i+1])
+    s+=`<line x1="${a.x}" y1="${a.y}" x2="${b.x}" y2="${b.y}" stroke="url(#edge)" stroke-width="0.55" opacity="0.16"/>`;
+  pos.forEach((layer,i)=>{layer.forEach(p=>{s+=`<circle cx="${p.x}" cy="${p.y}" r="5.6" fill="url(#${layers[i].c==='g'?'ng':'nb'})"/>`;});});
+  // layer labels
+  layers.forEach((L,i)=>{
+    s+=`<text x="${xs[i]}" y="${H-46}" text-anchor="middle" font-family="Sora,sans-serif" font-weight="800" font-size="26" fill="${L.c==='g'?'#F5C451':'#3FA9FF'}">${L.label}</text>`;
+    if(L.sub) s+=`<text x="${xs[i]}" y="${H-22}" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="12" fill="#9DAAC2" letter-spacing="1">${L.sub.toUpperCase()}</text>`;
+    else s+=`<text x="${xs[i]}" y="${H-22}" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="12" fill="#9DAAC2" letter-spacing="1">HIDDEN</text>`;
+  });
+  svg.innerHTML+=s;
+})();
+// ---- 22 parallel sim cells ----
+(function(){
+  const g=document.getElementById('simgrid');
+  let h='';for(let i=0;i<22;i++)h+=`<div class="cell">⚽</div>`;g.innerHTML=h;
+})();
+// ---- nav ----
+const slides=[...document.querySelectorAll('.slide')],dots=document.getElementById('dots'),prog=document.getElementById('prog'),fc=document.getElementById('fc');
+let i=0;slides.forEach((_,k)=>{const d=document.createElement('i');d.onclick=()=>go(k);dots.appendChild(d)});
+const dd=[...dots.children];
+function go(n){i=Math.max(0,Math.min(slides.length-1,n));slides.forEach((s,k)=>s.classList.toggle('active',k===i));
+  dd.forEach((d,k)=>d.classList.toggle('on',k===i));prog.style.width=((i+1)/slides.length*100)+'%';
+  fc.textContent=String(i+1).padStart(2,'0')+' / '+String(slides.length).padStart(2,'0');}
+document.addEventListener('keydown',e=>{if(['ArrowRight','ArrowDown',' ','PageDown'].includes(e.key)){e.preventDefault();go(i+1)}
+  if(['ArrowLeft','ArrowUp','PageUp'].includes(e.key)){e.preventDefault();go(i-1)}if(e.key==='Home')go(0);if(e.key==='End')go(slides.length-1)});
+document.getElementById('deck').addEventListener('click',e=>{if(e.target.closest('.dots'))return;(e.clientX/window.innerWidth>0.32)?go(i+1):go(i-1)});
+go(0);
+</script>
+</body>
+</html>
